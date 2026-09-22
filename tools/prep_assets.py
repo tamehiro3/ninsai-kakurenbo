@@ -22,7 +22,7 @@ SPRITE_H = 240   # ゲーム内・ポートレート共用（ブラウザ側で�
 
 # (file, char id, view, box) box = (x0,y0,x1,y1) 元画像1536x1024の座標
 CROPS = [
-    ("character-kohaku.png", "kohaku", "front", (100, 110, 340, 545)),
+    ("character-kohaku.png", "kohaku", "front", (100, 118, 340, 545)),
     ("character-kohaku.png", "kohaku", "quarter", (430, 110, 680, 545)),
     ("character-kohaku.png", "kohaku", "side", (790, 130, 1010, 545)),
     ("character-kohaku.png", "kohaku", "back", (1120, 120, 1400, 545)),
@@ -53,8 +53,9 @@ def cut_out(im, tol=26):
     im = im.convert("RGBA")
     w, h = im.size
     px = im.load()
-    corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
-    bg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+    # 背景色＝外周ピクセルの中央値（四隅の平均だとラベル文字にかかったときに外れる）
+    border = [px[x, 0] for x in range(w)] + [px[x, h - 1] for x in range(w)] + [px[0, y] for y in range(h)] + [px[w - 1, y] for y in range(h)]
+    bg = tuple(sorted(c[i] for c in border)[len(border) // 2] for i in range(3))
 
     def near(p):
         return (p[0] - bg[0]) ** 2 + (p[1] - bg[1]) ** 2 + (p[2] - bg[2]) ** 2 <= tol * tol
