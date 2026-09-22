@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>忍彩かくれんぼ — 城旗争奪</title>
+  <meta name="description" content="擬態かくれんぼで城の旗を先に掴む3対3の忍者ゲーム。CryptoNinja非公式ファンゲーム。課金なし・通信なし・オフライン可。">
+  <meta name="theme-color" content="#15222B">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="忍彩かくれんぼ">
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+  <!-- タイトル -->
+  <section id="screen-title" class="screen active">
+    <div class="title-wrap">
+      <div class="title-castle" aria-hidden="true"></div>
+      <p class="title-sub">見つからずに近づく。仲間が気を引く。その隙に、城の旗を掴め。</p>
+      <h1 class="title-logo"><span>忍彩かくれんぼ</span><small>城旗争奪</small></h1>
+      <div class="title-chars" aria-hidden="true">
+        <img src="img/chars/sakuya_quarter.png" alt="">
+        <img src="img/chars/kohaku_front.png" alt="" class="mid">
+        <img src="img/chars/jin_quarter.png" alt="">
+      </div>
+      <div class="title-btns">
+        <button class="btn primary big" id="btn-tutorial">練習（90秒の導入）<small class="tut-badge">まずはここから</small></button>
+        <button class="btn primary big" data-go="lobby">ひとりで対戦（3対3・Bot）</button>
+        <div class="row">
+          <button class="btn" data-go="howto">遊び方</button>
+          <button class="btn" data-go="zukan">図鑑</button>
+          <button class="btn" data-open-settings>設定</button>
+          <button class="btn" data-go="credits">利用表示</button>
+        </div>
+      </div>
+      <p class="mini">本作はCryptoNinjaの非公式ファンゲームです。公式作品ではありません。</p>
+    </div>
+  </section>
+
+  <!-- 遊び方 -->
+  <section id="screen-howto" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>遊び方</h2></header>
+    <div id="howto-body" class="page-body"></div>
+  </section>
+
+  <!-- ロビー -->
+  <section id="screen-lobby" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>対戦の準備</h2></header>
+    <div class="page-body">
+      <h3>1. 忍者を選ぶ <small>公式39体・能力は全員同じ。見た目だけ</small></h3>
+      <div id="char-preview" class="char-preview"></div>
+      <div id="char-grid" class="cgrid"></div>
+      <h3>2. チーム <small>色と形で見分ける</small></h3>
+      <div id="team-cards" class="cards two"></div>
+      <h3>3. あなたの担当 <small>作戦であって能力ではない。試合中に入れ替えてよい</small></h3>
+      <div id="role-cards" class="cards"></div>
+      <h3>味方2人 <small>おまかせか指名</small></h3>
+      <div id="mate-list" class="mates"></div>
+      <h3>相手の強さ</h3>
+      <div id="dif-cards" class="cards"></div>
+      <button class="btn primary big" id="btn-start-match">作戦会議へ →</button>
+      <p class="mini">通信対戦は未実装。味方2人と相手3人は端末内のBot（人間と同じ可視情報・能力制限で動く）。</p>
+    </div>
+  </section>
+
+  <!-- 作戦（15秒） -->
+  <section id="screen-briefing" class="screen page">
+    <div class="briefing">
+      <h2>作戦会議 <span class="timer"><b id="briefing-timer">15</b>秒</span></h2>
+      <canvas id="briefing-map" width="384" height="288"></canvas>
+      <p id="briefing-text"></p>
+      <div class="legend"><span class="n">北・竹回廊</span><span class="c">中央門</span><span class="s">南・石庭</span></div>
+      <button class="btn primary big" id="btn-depart">出発（3秒後に開始）</button>
+    </div>
+  </section>
+
+  <!-- 試合 -->
+  <section id="screen-game" class="screen">
+    <canvas id="game-canvas"></canvas>
+    <div id="stick-zone"><div id="stick-base"><div id="stick-knob"></div></div></div>
+    <div id="aim-arrow"></div>
+
+    <div class="hud-top">
+      <div id="hud-mates" class="hud-mates"></div>
+      <div class="hud-center">
+        <div class="hud-time-wrap"><span id="hud-compass" class="compass">➤</span><span id="hud-time">4:00</span><span id="hud-ot" class="ot">延長</span></div>
+        <div class="hud-tag">城の旗を先に掴め</div>
+      </div>
+      <div class="hud-right">
+        <canvas id="minimap" width="128" height="96"></canvas>
+        <button id="btn-pause" class="icon-btn" aria-label="ポーズ">≡</button>
+      </div>
+    </div>
+    <div id="toast"></div>
+    <div id="countdown"></div>
+    <div id="hud-return"></div>
+
+    <div id="tut-panel"></div>
+    <button id="btn-tut-skip" class="btn small">練習をやめる</button>
+
+    <div class="hud-bottom">
+      <div class="camo-wrap"><div id="hud-camo" class="hud-camo"></div><div class="camo-bar"><div id="hud-camo-bar"></div></div></div>
+      <button id="btn-claim" class="claim-btn">🚩 旗を掴む<small>F</small></button>
+    </div>
+
+    <div id="btns">
+      <div id="ping-menu" class="ping-menu"></div>
+      <button class="abtn sub" data-action="ping"><span class="ic">👋</span><span class="lb">合図</span><kbd>R</kbd></button>
+      <button class="abtn sub" data-action="crouch" id="btn-crouch"><span class="ic">🧎</span><span class="lb">しゃがむ</span><kbd>C</kbd></button>
+      <button class="abtn" data-action="scan"><span class="ic">👁</span><span class="lb">見破り</span><kbd>Q</kbd></button>
+      <button class="abtn" data-action="camo"><span class="ic">🎋</span><span class="lb">布</span><kbd>E</kbd></button>
+      <button class="abtn main" data-action="shot"><span class="ic">🏷</span><span class="lb">印</span><kbd>Space</kbd></button>
+    </div>
+
+    <div id="pause" class="overlay">
+      <div class="panel">
+        <h2>ポーズ</h2>
+        <button class="btn primary big" id="btn-resume">続ける</button>
+        <button class="btn big" id="btn-pause-settings">設定</button>
+        <button class="btn big" id="btn-quit">やめてタイトルへ</button>
+      </div>
+    </div>
+    <div id="rotate-hint">横向きにすると遊びやすい</div>
+  </section>
+
+  <!-- 結果 -->
+  <section id="screen-result" class="screen page">
+    <div class="page-body result">
+      <h2 id="result-title" class="result-title">結果</h2>
+      <p id="result-sub" class="result-sub"></p>
+      <div id="result-hero" class="result-hero"></div>
+      <table id="result-table" class="result-table"></table>
+      <div class="row">
+        <button class="btn primary big" id="btn-rematch">もう一戦</button>
+        <button class="btn big" id="btn-rematch-swap">チーム入替で再戦</button>
+      </div>
+      <button class="btn" id="btn-to-lobby">ロビーへ戻る</button>
+    </div>
+  </section>
+
+  <!-- 練習おわり -->
+  <section id="screen-tutdone" class="screen page">
+    <div class="page-body result">
+      <h2 class="result-title win">練習おわり！</h2>
+      <div class="result-hero"><img src="img/chars/kohaku_happy.png" alt=""><div class="bubble" id="tut-done-text"></div></div>
+      <button class="btn primary big" data-go="lobby">ひとりで対戦へ</button>
+      <button class="btn" data-go="title">タイトルへ</button>
+    </div>
+  </section>
+
+  <!-- 図鑑 -->
+  <section id="screen-zukan" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>図鑑</h2></header>
+    <div class="page-body">
+      <div id="zukan-stats" class="stats"></div>
+      <div id="zukan-filter" class="chips"></div>
+      <div id="zukan-cards"></div>
+      <p class="mini">名前・クラン・忍術・武器・紹介文は <a href="https://www.ninja-dao.com/characters" target="_blank" rel="noopener">Ninja DAO 公式キャラクター資料</a>（CC0）から。資料シートは公式2D・公式3Dフィギュア・公式データをまとめた参照用。「ゲーム用アレンジ案」は公式画像を参照して描いた本作の解釈で、公式設定画ではない。</p>
+    </div>
+  </section>
+
+  <!-- 利用表示 -->
+  <section id="screen-credits" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>利用表示</h2></header>
+    <div class="page-body">
+      <div class="card">
+        <h3>本作について</h3>
+        <p><b>本作はCryptoNinjaの非公式ファンゲームです。公式作品ではありません。</b></p>
+        <p>キャラクター（CryptoNinja 公式39体）の名前・外見・クラン・忍術・武器・紹介文は <a href="https://www.ninja-dao.com/characters" target="_blank" rel="noopener">Ninja DAO 公式キャラクター資料</a> を参照しています。会話・競技上の役割・擬態の道具・チーム分けは本作の創作で、公式の設定ではありません。</p>
+        <p>利用条件は <a href="https://www.ninja-dao.com/guidelines" target="_blank" rel="noopener">CryptoNinja 利用ガイドライン</a> に従います。タイトルは仮題です。</p>
+      </div>
+      <div class="card">
+        <h3>お金・通信</h3>
+        <p>課金・広告・アイテム販売はありません。通信もしません（試合は端末内で完結し、戦績は端末内にだけ保存）。速度・擬態時間・索敵範囲に差をつける要素は今後も売りません。</p>
+      </div>
+      <div class="card">
+        <h3>設計</h3>
+        <p>ルールは「忍彩かくれんぼ — 城旗争奪 ゲーム設計書 v1.0」（2026-09-22）に基づく単一端末向けの試作。3対3の通信対戦・三人称3Dは未実装で、競技の判定はサーバーへ移せる形（入力は方向と行動だけ、座標と命中は判定側が決める）で作ってあります。</p>
+        <p class="mini">版 1.0 ／ ルール版 1.0 ／ マップ「竹影の城」1.0</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 設定（どの画面からも開ける） -->
+  <div id="settings-panel" class="overlay">
+    <div class="panel">
+      <h2>設定</h2>
+      <label class="row-set"><span>操作の左右を入替（スティックを右に）</span><input type="checkbox" id="set-swap"></label>
+      <label class="row-set"><span>足音の方向マークを表示</span><input type="checkbox" id="set-foot"></label>
+      <label class="row-set"><span>点滅・揺れを減らす</span><input type="checkbox" id="set-motion"></label>
+      <label class="row-set"><span>ボタンにキー名を表示（PC）</span><input type="checkbox" id="set-keys"></label>
+      <label class="row-set"><span>画面の拡大率</span><input type="range" id="set-zoom" min="0.8" max="1.3" step="0.1"></label>
+      <label class="row-set"><span>音量</span><input type="range" id="set-vol" min="0" max="1" step="0.1"></label>
+      <button class="btn primary big" id="btn-close-settings">閉じる</button>
+      <button class="btn small danger" id="btn-reset-save">戦績と設定を消す</button>
+    </div>
+  </div>
+  <div id="sheet-modal" class="overlay"><img id="sheet-img" alt="キャラクターシート"></div>
+  <div id="picker-modal" class="overlay">
+    <div class="panel wide">
+      <h2>味方を指名</h2>
+      <div id="picker-grid" class="cgrid"></div>
+      <button class="btn big" id="btn-close-picker">閉じる</button>
+    </div>
+  </div>
+
+  <script src="chars.js?v=2"></script>
+  <script src="data.js?v=2"></script>
+  <script src="sim.js?v=2"></script>
+  <script src="render.js?v=2"></script>
+  <script src="game.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+﻿★ゲームを公開する.bat
+★Jevで点検する.bat
+deploy_to_github.ps1
+tools/__pycache__/
+docs/jev_state.md
+docs/jev_result.json

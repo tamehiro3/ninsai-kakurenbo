@@ -1,0 +1,17 @@
+{
+  "name": "忍彩かくれんぼ — 城旗争奪",
+  "short_name": "忍彩かくれんぼ",
+  "description": "擬態かくれんぼで城の旗を先に掴む3対3の忍者ゲーム。CryptoNinja非公式ファンゲーム。課金なし・通信なし・オフライン可。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#15222B",
+  "theme_color": "#15222B",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
