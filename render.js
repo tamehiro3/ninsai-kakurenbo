@@ -299,7 +299,7 @@ const Render = (() => {
       ctx.restore();
     }
     for (const p of g.players) {
-      if (!p.pulse || p.returning > 0) continue;
+      if (!p.pulse || p.returning > 0 || p.ghost) continue;
       const x = sx(p.x), y = sy(p.y);
       ctx.save(); ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 2;
       for (let i = 0; i < 3; i++) { const k = ((t * 0.7 + i / 3) % 1); ctx.globalAlpha = 1 - k; ctx.beginPath(); ctx.ellipse(x, y, ppm * (0.3 + k * 1.6), ppm * (0.12 + k * 0.7), 0, 0, 7); ctx.stroke(); }
@@ -357,7 +357,17 @@ const Render = (() => {
   // 足音の方向マーク（見えていない敵の足音を、正確な座標を出さずに方向だけで示す）
   function drawFootMarks(g, viewer) {
     if (!opts.footMarks) return;
+    if (g.sounds) {   // オンライン：サーバーが判定した「聞こえる足音」の方向だけ
+      for (const snd of g.sounds) {
+        const rr = ppm * 1.7, cx = sx(viewer.x), cy = sy(viewer.y) - ppm * 0.6;
+        ctx.save(); ctx.globalAlpha = Math.max(0.35, 1 - snd.d / 9); ctx.strokeStyle = "#f2e6c4"; ctx.lineWidth = 2.5;
+        for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.arc(cx, cy, rr + i * ppm * 0.25, snd.a - 0.35, snd.a + 0.35); ctx.stroke(); }
+        ctx.restore();
+      }
+      return;
+    }
     for (const q of g.players) {
+      if (q.ghost || q.pulseOnly) continue;
       if (q.team === viewer.team || !Sim.audible(viewer, q)) continue;
       if (Sim.enemyView(viewer, q) === "seen" || Sim.enemyView(viewer, q) === "revealed") continue;
       const an = Math.atan2(q.y - viewer.y, q.x - viewer.x);
@@ -409,9 +419,9 @@ const Render = (() => {
     const y0 = Math.max(0, Math.floor(cam.y - Hpx / 2 / ppm) - 2), y1 = Math.min(H - 1, Math.ceil(cam.y + Hpx / 2 / ppm) + 1);
     const ents = [];
     for (const p of g.players) {
-      if (p.returning > 0) continue;
+      if (p.returning > 0 || p.ghost || p.pulseOnly) continue;
       let view = "seen";
-      if (p.team !== viewer.team) { view = Sim.enemyView(viewer, p); if (view === "none") continue; }
+      if (p.team !== viewer.team) { view = p.cloth ? "cloth" : Sim.enemyView(viewer, p); if (view === "none") continue; }
       const ix = lerp(p.px, p.x, alpha), iy = lerp(p.py, p.y, alpha);
       ents.push({ y: iy, f: () => drawCharacter(g, p, viewer, view, ix, iy) });
     }

@@ -115,7 +115,7 @@ const Sim = (() => {
       scanCd: 0, scanPending: 0, shotCd: 0, pingCd: 0,
       castleTime: 0, awayTime: 0, pulse: false,
       lastSeen: null,           // 味方が共有する「最後に見た場所」{x,y,t}
-      input: { x: 0, y: 0, actions: [], angle: null },
+      input: { x: 0, y: 0, actions: [], angle: null }, connected: true, netSeq: 0,
       stats: { hides: 0, hideTime: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0, marked: 0 },
       // Bot用
       ai: { think: 0, wp: 0, phase: "route", suspect: null, seen: 0, goAt: 0, lastPing: -99, lastPingKind: "", waitT: 0, scanned: false, post: null, postT: 0, patience: 40, lastContact: -99, minClaim: 30, stepOut: false, hz: "attack", hzT: 0, quietT: 0, shotAt: -99 },
@@ -136,15 +136,25 @@ const Sim = (() => {
       flag: "available", rules: R.version, map: D.MAP.version,
     };
     (opts.players || []).forEach((p, i) => g.players.push(makePlayer(p.id || ("p" + i), p.team, p.char, p)));
-    for (const p of g.players) p.ai.minClaim = 35 + rng(g) * 30;
+    for (const p of g.players) assignAi(g, p);
     return g;
+  }
+  // 難易度ごとの初期値（手ごわい＝早く取りに行く・ルートも役割どおりとは限らない）
+  function assignAi(g, p) {
+    const dif = g.difficulty;
+    p.ai.minClaim = dif.aggro ? 18 + rng(g) * 15 : 35 + rng(g) * 30;
+    p.ai.routeOverride = null;
+    if (dif.aggro && p.bot && rng(g) < 0.5) {
+      const routes = Object.keys(D.MAP.routes);
+      p.ai.routeOverride = routes[(rng(g) * routes.length) | 0];
+    }
   }
   function resetForRematch(g, swapTeams) {
     const players = g.players.map(p => makePlayer(p.id, swapTeams ? 1 - p.team : p.team, p.char, { slot: p.slot, name: p.name, bot: p.bot, role: p.role }));
     Object.assign(g, { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false,
       shots: [], effects: [], log: [], winner: [], claimants: [], reason: "", claimTick: -1, flag: "available" });
     g.players = players;
-    for (const p of g.players) p.ai.minClaim = 35 + rng(g) * 30;
+    for (const p of g.players) assignAi(g, p);
     return g;
   }
 
@@ -220,7 +230,7 @@ const Sim = (() => {
   // ---------- Bot ----------
   function routeFor(p) {
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[1];
-    const rt = D.MAP.routes[role.route];
+    const rt = D.MAP.routes[(p.ai && p.ai.routeOverride) || role.route];
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
     return { pts: rt.pts.map(m), wait: m(rt.wait) };
   }
@@ -258,7 +268,7 @@ const Sim = (() => {
   };
   function harassPts(p) {
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[2];
-    const h = HARASS[role.route] || HARASS.south;
+    const h = HARASS[(p.ai && p.ai.routeOverride) || role.route] || HARASS.south;
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
     return { peek: m(h.peek), attack: m(h.attack) };
   }
@@ -316,8 +326,9 @@ const Sim = (() => {
       let leave = p.camoTime < 1.0 || tooClose || late;
       let go = late;
       if (ai.phase === "wait") {
-        const engaged = g.elapsed > 30 && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
-        go = go || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > 30 && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
+        const minT = dif.aggro ? 12 : 30;
+        const engaged = g.elapsed > minT && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
+        go = go || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > minT && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
         if (go && !threat) leave = true;
         // 脅威が無いあいだは布をたたんで持ち時間を温存（持ち場には留まる）
         if (!threat && ai.waitT > 4 && !go) leave = true;
@@ -345,7 +356,7 @@ const Sim = (() => {
       goal = route.wait;
       if (dist(p, goal) < 0.45) {
         if (zoneAt(p.x, p.y) && p.camoCd <= 0 && p.reveal <= 0 && p.protect <= 0) {
-          ai.phase = "wait"; ai.goAt = g.elapsed + 25 + rng(g) * 20; ai.waitT = 0;
+          ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20); ai.waitT = 0;
           setInput(p, { x: 0, y: 0, actions: ["camo"] }); return;
         }
         ai.phase = "go";
@@ -353,8 +364,9 @@ const Sim = (() => {
     }
     if (ai.phase === "wait") {
       // 待ち伏せ（擬態が切れても持ち場で再擬態しながら待つ）
-      const engaged = g.elapsed > 30 && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
-      const go = late || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > 30 && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
+      const minT = dif.aggro ? 12 : 30;
+      const engaged = g.elapsed > minT && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
+      const go = late || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > minT && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
       if (go) ai.phase = "go";
       else {
         goal = route.wait; hold = dist(p, goal) < 0.6;
@@ -387,7 +399,11 @@ const Sim = (() => {
       } else {
         goal = hp.peek;
         if (dist(p, goal) < 0.6) { hold = true; angleHold = Math.atan2(FLAG.y - p.y, FLAG.x - p.x); }
-        if (g.elapsed - ai.hzT > 3 + rng(g) * 3 && p.marks === 0) { ai.hz = "attack"; ai.hzT = g.elapsed; }
+        if (g.elapsed - ai.hzT > (dif.aggro ? 1.5 + rng(g) * 1.5 : 3 + rng(g) * 3) && p.marks === 0) {
+          ai.hz = "attack"; ai.hzT = g.elapsed;
+          // 手ごわい：覗く場所を変えて読まれにくくする（複雑さ）
+          if (dif.aggro && rng(g) < 0.5) { const routes = Object.keys(D.MAP.routes); ai.routeOverride = routes[(rng(g) * routes.length) | 0]; }
+        }
       }
       if (late || contest || (ai.quietT > 6 && quiet2 && g.elapsed > ai.minClaim * 0.7) || opportunity || mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5)) ai.phase = "go";
     }
@@ -410,7 +426,7 @@ const Sim = (() => {
       const ex = enemy.x + (enemy.x - enemy.px) / TICK * tt * lead, ey = enemy.y + (enemy.y - enemy.py) / TICK * tt * lead;
       const ang = Math.atan2(ey - p.y, ex - p.x);
       angle = ang;
-      if (d <= 7.5 && p.shotCd <= 0) {
+      if (d <= (dif.aggro ? 7.9 : 7.5) && p.shotCd <= 0) {
         actions.push("shot"); ai.shotAt = g.elapsed;
         angle = ang + (rng(g) - 0.5) * 2 * dif.aimErr * (0.4 + d / 6);
         if (ai.lastPing + 8 < g.elapsed && p.pingCd <= 0) { actions.push("ping:enemy"); ai.lastPing = g.elapsed; ai.lastPingKind = "enemy"; }
@@ -432,6 +448,8 @@ const Sim = (() => {
         angle = Math.atan2(target.y - p.y, target.x - p.x) + (rng(g) - 0.5) * dif.aimErr;
         actions.push("shot"); ai.shotAt = g.elapsed;
       } else {
+        const hunt = dif.aggro && !hold && shared.find(q => dist(p, q) < 12 && dist(q, FLAG) > 2);
+        if (hunt) move = steer(g, p, hunt);
         const z = zoneAt(p.x, p.y);
         const nearThreat = !!ai.suspect || enemies.some(q => q.returning <= 0 && dist(p, q) < 9 && lineClear(p.x, p.y, q.x, q.y));
         if (z && !hold && !late && ai.phase !== "harass" && p.camoCd <= 0 && p.reveal <= 0 && p.protect <= 0 && flagD > R.flagNoCamo && nearThreat && p.marks === 0 && rng(g) < dif.hideRate) {
@@ -476,6 +494,7 @@ const Sim = (() => {
         continue;
       }
       if (p.bot) { if (p.controller) p.controller(g, p, dt); else botThink(g, p); }
+      else if (p.connected === false) { p.input = { x: 0, y: 0, actions: [], angle: null }; if (p.camo) unhide(g, p); }
 
       const i = p.input;
       const acts = new Set(i.actions);
@@ -514,7 +533,7 @@ const Sim = (() => {
 
       // 移動
       const base = p.camo === 2 ? R.camoSpeed : p.crouch ? R.crouchSpeed : R.speed;
-      const speed = base * (p.slow > 0 ? R.slowFactor : 1);
+      const speed = base * (p.slow > 0 ? R.slowFactor : 1) * (p.bot && !p.controller && g.difficulty.speedMul ? g.difficulty.speedMul : 1);
       const nx = p.x + i.x * speed * dt, ny = p.y + i.y * speed * dt;
       if (!blocked(nx, p.y, R.bodyRadius, p.team)) p.x = nx;
       if (!blocked(p.x, ny, R.bodyRadius, p.team)) p.y = ny;
@@ -627,6 +646,60 @@ const Sim = (() => {
     }
   }
 
+  // ネット対戦：受け取った入力を反映（連番の重複・古い入力は捨てる。行動は次のtickまで溜める）
+  function netInput(p, m) {
+    if (!m || typeof m !== "object") return;
+    const seq = m.seq | 0;
+    if (seq <= (p.netSeq | 0)) return;
+    p.netSeq = seq;
+    const n = v => Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0;
+    let x = n(m.x), y = n(m.y);
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    p.input.x = x; p.input.y = y;
+    p.input.angle = Number.isFinite(m.angle) ? m.angle : null;
+    const acts = Array.isArray(m.actions) ? m.actions.filter(a => ACTIONS.includes(a) || (typeof a === "string" && a.startsWith("ping:"))).slice(0, 6) : [];
+    for (const a of acts) if (!p.input.actions.includes(a)) p.input.actions.push(a);
+  }
+  // ネット対戦：観戦者ごとに見える情報だけを抜き出す（壁の向こうの敵は送らない・擬態中の敵は布の位置だけ）
+  function pubPlayer(p, full) {
+    const o = { id: p.id, team: p.team, char: p.char, name: p.name, bot: p.bot, x: +p.x.toFixed(2), y: +p.y.toFixed(2), angle: +p.angle.toFixed(2),
+      crouch: p.crouch, camo: p.camo, camoEnter: p.camoEnter, camoPattern: p.camoPattern, reveal: p.reveal, marks: p.marks, protect: p.protect, returning: p.returning,
+      speedNow: +p.speedNow.toFixed(2), pulse: p.pulse, emote: p.emote, connected: p.connected !== false, role: p.role };
+    if (full) Object.assign(o, { camoTime: p.camoTime, camoCd: p.camoCd, scanCd: p.scanCd, shotCd: p.shotCd, pingCd: p.pingCd, castleTime: p.castleTime, slow: p.slow, stats: p.stats });
+    return o;
+  }
+  function snapshot(g, viewerId) {
+    const v = g.players.find(p => p.id === viewerId);
+    const players = [], sounds = [];
+    for (const p of g.players) {
+      if (!v || p.team === v.team) { players.push(pubPlayer(p, p === v)); continue; }
+      const view = enemyView(v, p);
+      if (view === "none") {
+        if (p.pulse && p.returning <= 0) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen });
+        else if (p.lastSeen) players.push({ id: p.id, team: p.team, ghost: true, lastSeen: p.lastSeen });
+        if (audible(v, p)) sounds.push({ a: +Math.atan2(p.y - v.y, p.x - v.x).toFixed(2), d: +dist(v, p).toFixed(1) });
+        continue;
+      }
+      if (view === "cloth") players.push({ id: p.id, team: p.team, char: p.char, name: "", x: +p.x.toFixed(2), y: +p.y.toFixed(2), angle: 0, camo: 2, camoPattern: p.camoPattern, speedNow: +p.speedNow.toFixed(2), cloth: true, reveal: 0, marks: 0, protect: 0, returning: 0, crouch: false });
+      else { const o = pubPlayer(p, false); o.lastSeen = p.lastSeen; players.push(o); }
+    }
+    const shots = g.shots.filter(s => !v || s.team === v.team || (dist(v, s) < 22 && lineClear(v.x, v.y, s.x, s.y))).map(s => ({ id: s.id, team: s.team, x: +s.x.toFixed(2), y: +s.y.toFixed(2), angle: +s.angle.toFixed(2) }));
+    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds };
+  }
+  // 効果は観戦者に関係あるものだけ（合図は味方のみ）
+  function effectVisible(g, viewerId, e) {
+    const v = g.players.find(p => p.id === viewerId);
+    if (!v) return true;
+    if (e.type === "ping") return e.team === v.team;
+    if (e.type === "win" || e.type === "overtime") return true;
+    if (e.team === v.team) return true;
+    return dist(v, e) < 22 && lineClear(v.x, v.y, e.x, e.y);
+  }
+  function freshAi() {
+    return { think: 0, wp: 0, phase: "route", suspect: null, seen: 0, goAt: 0, lastPing: -99, lastPingKind: "", waitT: 0, scanned: false, post: null, postT: 0, patience: 40, lastContact: -99, minClaim: 30, stepOut: false, hz: "attack", hzT: 0, quietT: 0, shotAt: -99, routeOverride: null };
+  }
+
   // 観戦側（人間）の可視情報：敵をどう描くか
   function enemyView(viewer, q) {
     if (q.returning > 0) return "none";
@@ -637,6 +710,6 @@ const Sim = (() => {
   }
 
   return { R, D, W, H, TICK, FLAG, grid, SOLID, cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
-    field, steer, createMatch, resetForRematch, makePlayer, setInput, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor };
+    field, steer, createMatch, resetForRematch, makePlayer, setInput, netInput, snapshot, effectVisible, freshAi, assignAi, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor };
 })();
 if (typeof module !== "undefined") module.exports = Sim;

@@ -210,9 +210,11 @@
     Render.drawBriefingMap(mc, me.team, assign);
     const myRole = D.ROLES.find(x => x.id === me.role);
     $("#briefing-text").innerHTML = `<b>${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name}チーム</b>で出発。あなたは<b>${myRole.name}</b>（${D.MAP.routes[myRole.route].name}）。<br>${myRole.desc}。<br><small>味方は擬態中でも名前と輪郭が見える。敵は布しか見えない。</small>`;
-    startLoop();
+    $("#btn-depart").style.display = (mode === "online" && !onlineIsHost()) ? "none" : "";
+    $("#btn-depart").textContent = mode === "online" ? "出発（ホスト・3秒後に開始）" : "出発（3秒後に開始）";
+    if (mode === "online") startOnlineLoop(); else startLoop();
   }
-  $("#btn-depart").addEventListener("click", () => { if (g && g.phase === "briefing") { g.timer = 0; Snd.play("ui"); } });
+  $("#btn-depart").addEventListener("click", () => { if (!g || g.phase !== "briefing") return; Snd.play("ui"); if (mode === "online") Net.send({ t: "depart" }); else g.timer = 0; });
 
   function startLoop() {
     cancelAnimationFrame(raf); lastT = performance.now(); acc = 0;
@@ -261,6 +263,7 @@
       angle = Math.atan2(input.mouse.y - Render.sy(me.y), input.mouse.x - Render.sx(me.x));
     }
     input.aimOnce = null;
+    if (mode === "online") { onlineInput(x, y, acts, angle); return; }
     S.setInput(me, { x, y, actions: acts, angle });
   }
   function queue(a, angle) { if (!g || paused) return; input.actions.push(a); if (angle != null) input.aimOnce = angle; }
@@ -482,7 +485,8 @@
     if (footAcc > 0.28) {
       footAcc = 0;
       if (me.speedNow > 0.3 && me.returning <= 0) Snd.play(me.crouch || me.camo ? "stepSoft" : "step");
-      for (const q of g.players) if (q !== me && S.audible(me, q) && Math.random() < 0.6) Snd.play("stepSoft");
+      if (g.sounds) { for (const snd of g.sounds) if (Math.random() < 0.6) Snd.play("stepSoft"); }
+      else for (const q of g.players) if (q !== me && !q.ghost && !q.pulseOnly && S.audible(me, q) && Math.random() < 0.6) Snd.play("stepSoft");
     }
     if (g.phase === "countdown") { const c = Math.ceil(g.timer); if (c !== consumeLog.lastC) { consumeLog.lastC = c; Snd.play("count"); } }
   }
@@ -490,13 +494,14 @@
   // ---------- ポーズ ----------
   function togglePause() {
     if (!g || current !== "game" || g.phase === "finished") return;
+    if (mode === "online") { $("#pause").classList.toggle("on"); document.body.classList.add("online-pause"); return; }
     paused = !paused;
     $("#pause").classList.toggle("on", paused);
     if (!paused) { lastT = performance.now(); }
   }
-  $("#btn-resume").addEventListener("click", () => togglePause());
+  $("#btn-resume").addEventListener("click", () => { if (mode === "online") $("#pause").classList.remove("on"); else togglePause(); });
   $("#btn-pause-settings").addEventListener("click", () => { buildSettings(); $("#settings-panel").classList.add("on"); });
-  $("#btn-quit").addEventListener("click", () => { paused = false; $("#pause").classList.remove("on"); endMatch(); show("title"); });
+  $("#btn-quit").addEventListener("click", () => { paused = false; $("#pause").classList.remove("on"); if (mode === "online") { leaveOnline(); show("online"); return; } endMatch(); show("title"); });
   function endMatch() { stopLoop(); g = null; me = null; tutorial = null; input.actions = []; input.x = input.y = 0; document.body.classList.remove("tutorial"); pingMenu.classList.remove("on"); }
 
   // ---------- 結果 ----------
@@ -524,9 +529,9 @@
     $("#result-table").innerHTML = `<tr><th>味方</th><th>擬態</th><th>見破り</th><th>命中</th><th>合図</th><th>帰還</th></tr>${rows.join("")}`;
     Snd.stopAmbient();
   }
-  $("#btn-rematch").addEventListener("click", () => { Snd.play("ui"); S.resetForRematch(g, false); me = g.players.find(p => p.id === "me"); beginBriefing(); });
-  $("#btn-rematch-swap").addEventListener("click", () => { Snd.play("ui"); S.resetForRematch(g, true); me = g.players.find(p => p.id === "me"); lobby.team = me.team; beginBriefing(); });
-  $("#btn-to-lobby").addEventListener("click", () => { Snd.play("ui"); endMatch(); buildLobby(); show("lobby"); });
+  $("#btn-rematch").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", false); return; } S.resetForRematch(g, false); me = g.players.find(p => p.id === "me"); beginBriefing(); });
+  $("#btn-rematch-swap").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", true); return; } S.resetForRematch(g, true); me = g.players.find(p => p.id === "me"); lobby.team = me.team; beginBriefing(); });
+  $("#btn-to-lobby").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("tolobby"); return; } endMatch(); buildLobby(); show("lobby"); });
 
   // ---------- 図鑑 ----------
   let zukanClan = "all";
@@ -564,8 +569,11 @@
     const s = save.settings;
     $("#set-swap").checked = s.swapSides; $("#set-foot").checked = s.footMarks; $("#set-motion").checked = s.reduceMotion; $("#set-keys").checked = s.showKeys;
     $("#set-zoom").value = s.zoom; $("#set-vol").value = s.volume;
+    let su = ""; try { su = localStorage.getItem("ninsaiServerUrl") || ""; } catch (e) { }
+    $("#set-server").value = su; $("#set-server").placeholder = D.ONLINE.url;
     applySettings();
   }
+  $("#set-server").addEventListener("change", e => { const v = e.target.value.trim().replace(/\/+$/, ""); try { if (v) localStorage.setItem("ninsaiServerUrl", v); else localStorage.removeItem("ninsaiServerUrl"); } catch (x) { } });
   function applySettings() {
     const s = save.settings;
     document.body.classList.toggle("swap", s.swapSides);
@@ -727,8 +735,192 @@
   window.addEventListener("resize", orientationHint);
   setInterval(orientationHint, 1000);
 
+
+  // ---------- オンライン対戦（合言葉の部屋） ----------
+  // サーバー（worker/）が判定を持つ。ここは「入力を送る・状態を受けて描く・自分の移動だけ先読み」
+  const online = { code: null, lobby: null, byId: new Map(), snapAt: 0, endMsg: null, pending: null, sendAcc: 0, status: "" };
+  function onlineIsHost() { return !!(online.lobby && Net.you && online.lobby.hostId === Net.you.id); }
+  function onlineStatus(text, cls) { const el = $("#online-status"); el.textContent = text || ""; el.className = "mini " + (cls || ""); }
+  function myOnlineChar() { return save.settings.charId || "kohaku"; }
+
+  async function onlineCreate() {
+    Snd.play("ui"); onlineStatus("部屋を作っています…");
+    try { const code = await Net.createRoom(); await onlineJoin(code); }
+    catch (e) { onlineStatus(e.message || "作れませんでした", "bad"); }
+  }
+  async function onlineJoin(code) {
+    code = (code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (code.length < 4) { onlineStatus("合言葉は4文字です", "bad"); return; }
+    onlineStatus("部屋に入っています…");
+    try {
+      Net.off("lobby"); Net.off("start"); Net.off("snap"); Net.off("end"); Net.off("tolobby"); Net.off("error"); Net.off("close");
+      Net.on("lobby", m => { online.lobby = m.lobby; buildRoom(); });
+      Net.on("start", m => startOnlineMatch(m));
+      Net.on("snap", m => applySnapshot(m));
+      Net.on("end", m => onlineEnd(m));
+      Net.on("tolobby", m => { online.lobby = m.lobby; endOnlineMatch(); show("room"); buildRoom(); });
+      Net.on("error", m => { toast(m.error || "エラー", "bad"); onlineStatus(m.error || "エラー", "bad"); });
+      Net.on("close", () => { if (mode === "online" && g) toast("接続が切れた。再接続しています…", "bad"); });
+      const m = await Net.connect(code, { charId: myOnlineChar() });
+      online.code = code; online.lobby = m.lobby;
+      Net.allowReconnect(60 * 60);
+      onlineStatus("");
+      show("room"); buildRoom();
+    } catch (e) { onlineStatus(e.message || "入れませんでした", "bad"); }
+  }
+  function leaveOnline() {
+    endOnlineMatch();
+    Net.close(); online.code = null; online.lobby = null;
+  }
+  function endOnlineMatch() {
+    stopLoop(); g = null; me = null; mode = "match"; online.byId = new Map(); online.endMsg = null; input.actions = []; input.x = input.y = 0;
+    document.body.classList.remove("online-pause"); $("#pause").classList.remove("on"); pingMenu.classList.remove("on"); Snd.stopAmbient();
+  }
+  function buildRoom() {
+    const L = online.lobby; if (!L) return;
+    const meL = L.players.find(p => p.id === (Net.you && Net.you.id));
+    $("#room-code").textContent = L.code; $("#room-code-big").textContent = L.code;
+    for (const t of [0, 1]) {
+      const list = L.players.filter(p => p.team === t);
+      const slots = [];
+      for (let i = 0; i < 3; i++) {
+        const p = list[i];
+        if (p) { const c = D.CHARS[D.charIndex(p.charId)]; const r = D.ROLES.find(x => x.id === p.role); slots.push(`<div class="slot ${p.id === (Net.you && Net.you.id) ? "me" : ""} ${p.connected ? "" : "off"}"><img src="img/faces/${c.id}.png" alt=""><div><b>${p.name}${p.host ? " 👑" : ""}</b><small>${r ? r.name : ""}${p.connected ? "" : "・切断中"}</small></div></div>`); }
+        else slots.push(`<div class="slot bot"><span class="q">🤖</span><div><b>Bot</b><small>空きは自動で埋まる</small></div></div>`);
+      }
+      $(`#room-team-${t}`).innerHTML = `<h4 style="color:${D.TEAMS[t].color}">${D.TEAMS[t].shape} ${D.TEAMS[t].name}チーム</h4>` + slots.join("");
+    }
+    if (meL) {
+      const c = D.CHARS[D.charIndex(meL.charId)];
+      $("#room-me").innerHTML = `<button class="btn" id="btn-room-char"><img class="face" src="img/faces/${c.id}.png" alt="">${c.name}<small>忍者を変える</small></button>` +
+        D.TEAMS.map(t => `<button class="btn ${meL.team === t.id ? "primary" : ""}" data-team="${t.id}">${t.shape} ${t.name}</button>`).join("") +
+        D.ROLES.map(r => `<button class="btn ${meL.role === r.id ? "primary" : ""}" data-role="${r.id}">${r.name}</button>`).join("");
+      $("#btn-room-char").addEventListener("click", () => openPickerOnline());
+      $$("#room-me [data-team]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); Net.send({ t: "set", team: +b.dataset.team }); }));
+      $$("#room-me [data-role]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); Net.send({ t: "set", role: b.dataset.role }); }));
+    }
+    const host = onlineIsHost();
+    $("#room-dif").innerHTML = Object.entries(D.DIFFICULTY).map(([k, v]) => `<button class="dif-card ${k === (L.difficulty || "normal") ? "sel" : ""}" data-dif="${k}" ${host ? "" : "disabled"}>${v.name}</button>`).join("");
+    $$("#room-dif .dif-card").forEach(b => b.addEventListener("click", () => { if (!host) return; Snd.play("ui"); Net.send({ t: "difficulty", value: b.dataset.dif }); }));
+    const humans = L.players.filter(p => p.connected).length;
+    $("#btn-room-start").style.display = host ? "" : "none";
+    $("#btn-room-start").disabled = L.phase !== "lobby";
+    $("#room-hint").textContent = L.phase !== "lobby" ? "試合中です。終わるとロビーに戻ります" : host ? `参加 ${humans}人。開始すると空きはBotが埋めます` : `参加 ${humans}人。ホスト（👑）の開始を待っています`;
+  }
+  function openPickerOnline() {
+    const cur = myOnlineChar();
+    $("#picker-grid").innerHTML = D.CHARS.map(c => charCard(c, c.id === cur)).join("");
+    $$("#picker-grid .cgrid-btn").forEach(b => b.addEventListener("click", () => { save.settings.charId = b.dataset.id; persist(); Snd.play("ui"); $("#picker-modal").classList.remove("on"); Net.send({ t: "set", charId: b.dataset.id }); }));
+    $("#picker-modal").classList.add("on");
+  }
+  $("#btn-room-create").addEventListener("click", onlineCreate);
+  $("#btn-room-join").addEventListener("click", () => { Snd.play("ui"); onlineJoin($("#room-code-input").value); });
+  $("#room-code-input").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4); });
+  $("#btn-room-leave").addEventListener("click", () => { Snd.play("ui"); leaveOnline(); show("online"); });
+  $("#btn-room-start").addEventListener("click", () => { if (!onlineIsHost()) return; Snd.play("ui"); Net.send({ t: "start" }); $("#room-hint").textContent = "開始しています…"; });
+  $("#btn-code-copy").addEventListener("click", () => { try { navigator.clipboard.writeText(online.code || ""); toast("合言葉をコピーした", "good"); } catch (e) { } });
+  $$("[data-go='online']").forEach(b => b.addEventListener("click", () => { onlineStatus(""); }));
+
+  // 試合開始（サーバーから）
+  function startOnlineMatch(m) {
+    mode = "online"; tutorial = null; online.lobby = m.lobby || online.lobby; online.endMsg = null; online.byId = new Map();
+    g = { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false, winner: [], claimants: [], reason: "", players: [], shots: [], effects: [], log: [], sounds: [], practice: false, noTimer: false, difficulty: D.DIFFICULTY[(online.lobby && online.lobby.difficulty) || "normal"] };
+    for (const sp of m.players) {
+      const p = { id: sp.id, team: sp.team, char: sp.char, role: sp.role, name: sp.name, bot: sp.bot, x: sp.team ? 60 : 4, y: 24, px: sp.team ? 60 : 4, py: 24, angle: sp.team ? Math.PI : 0, camo: 0, camoEnter: 0, camoTime: 0, camoCd: 0, camoPattern: null, reveal: 0, marks: 0, protect: 0, returning: 0, speedNow: 0, crouch: false, scanCd: 0, shotCd: 0, pingCd: 0, castleTime: 0, pulse: false, emote: null, lastSeen: null, stats: { hides: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0 }, input: { x: 0, y: 0, actions: [], angle: null } };
+      online.byId.set(p.id, p); g.players.push(p);
+    }
+    me = online.byId.get(Net.you.id) || g.players[0];
+    logIdx = 0; paused = false; resultTimer = 0; toasts.length = 0; renderToasts();
+    beginBriefing();
+  }
+  function applySnapshot(m) {
+    if (!g || mode !== "online") return;
+    online.snapAt = performance.now();
+    Object.assign(g, { phase: m.phase, timer: m.timer, time: m.time, elapsed: m.elapsed, tick: m.tick, overtime: m.overtime, winner: m.winner, claimants: m.claimants, reason: m.reason });
+    const seen = new Set();
+    for (const sp of m.players) {
+      seen.add(sp.id);
+      let p = online.byId.get(sp.id);
+      if (!p) { p = Object.assign({ px: sp.x, py: sp.y, stats: {}, input: { x: 0, y: 0, actions: [], angle: null } }, sp); online.byId.set(sp.id, p); g.players.push(p); continue; }
+      if (!g.players.includes(p)) g.players.push(p);
+      if (p === me) {
+        const sx = sp.x, sy = sp.y, keepAngle = p.angle;
+        const err = Math.hypot(sx - p.x, sy - p.y);
+        Object.assign(p, sp); p.angle = keepAngle;
+        if (err > 1.2 || p.returning > 0) { p.x = sx; p.y = sy; p.px = sx; p.py = sy; } else { p.x = online.px + (sx - online.px) * 0.25; p.y = online.py + (sy - online.py) * 0.25; }
+        online.px = p.x; online.py = p.y;
+      } else {
+        const ox = p.x, oy = p.y;
+        Object.assign(p, sp);
+        if (sp.x != null) { p.px = ox != null ? ox : sp.x; p.py = oy != null ? oy : sp.y; }
+      }
+    }
+    g.players = g.players.filter(p => seen.has(p.id) || p === me);
+    g.shots = m.shots || []; g.sounds = m.sounds || [];
+    for (const e of (m.effects || [])) { e.played = false; g.effects.push(e); }
+    for (const l of (m.log || [])) g.log.push(l);
+    if (g.effects.length > 120) g.effects.splice(0, g.effects.length - 120);
+  }
+  function onlineInput(x, y, acts, angle) {
+    if (!me) return;
+    Net.input(x, y, angle, acts);
+    online.pending = { x, y };
+    if (angle != null) me.angle = angle; else if (Math.hypot(x, y) > 0.1) me.angle = Math.atan2(y, x);
+  }
+  // 自分の移動だけ先読み（サーバーの位置と大きくずれたら合わせる）
+  function predictSelf(dt) {
+    if (!me || !online.pending || g.phase !== "playing" || me.returning > 0 || me.camo === 1) return;
+    const { x, y } = online.pending;
+    if (Math.hypot(x, y) < 0.1) return;
+    const base = me.camo === 2 ? R.camoSpeed : me.crouch ? R.crouchSpeed : R.speed;
+    const sp = base * (me.slow > 0 ? R.slowFactor : 1);
+    const nx = me.x + x * sp * dt, ny = me.y + y * sp * dt;
+    me.px = me.x; me.py = me.y;
+    if (!S.blocked(nx, me.y, R.bodyRadius, me.team)) me.x = nx;
+    if (!S.blocked(me.x, ny, R.bodyRadius, me.team)) me.y = ny;
+    if (me.camo === 2 && !S.zoneAt(me.x, me.y)) { /* サーバーが解除する */ }
+    online.px = me.x; online.py = me.y;
+  }
+  function startOnlineLoop() {
+    cancelAnimationFrame(raf); lastT = performance.now(); online.sendAcc = 0; online.px = me.x; online.py = me.y;
+    const frame = now => {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+      if (!g || mode !== "online") return;
+      online.sendAcc += dt;
+      if (online.sendAcc >= 1 / D.ONLINE.inputHz) { online.sendAcc = 0; applyInput(); }
+      predictSelf(dt);
+      for (const e of g.effects) e.life -= dt;
+      g.effects = g.effects.filter(e => e.life > 0);
+      for (const p of g.players) if (p.emote) { p.emote.t -= dt; if (p.emote.t <= 0) p.emote = null; }
+      consumeLog();
+      if (g.phase === "briefing") { $("#briefing-timer").textContent = Math.ceil(g.timer); if (current !== "briefing") { show("briefing"); } return; }
+      if (current === "briefing") { show("game"); Snd.startAmbient(); Render.resize(); }
+      if (current === "game") {
+        const alpha = Math.min(1, (now - online.snapAt) / (1000 / D.ONLINE.snapshotHz));
+        Render.draw(g, me, alpha, dt);
+        Render.drawMinimap(mini, g, me);
+        updateHUD(dt);
+      }
+      if (g.phase === "finished" && online.endMsg && current === "game") { resultTimer += dt; if (resultTimer > 2.2) showResult(); }
+    };
+    raf = requestAnimationFrame(frame);
+  }
+  function onlineEnd(m) {
+    if (!g || mode !== "online") return;
+    const r = m.result;
+    Object.assign(g, { phase: "finished", winner: r.winner, claimants: r.claimants, reason: r.reason, elapsed: r.elapsed, overtime: r.overtime });
+    for (const rp of r.players) { let p = online.byId.get(rp.id); if (!p) { p = Object.assign({ x: 0, y: 0, px: 0, py: 0 }, rp); online.byId.set(p.id, p); } Object.assign(p, { team: rp.team, char: rp.char, role: rp.role, name: rp.name, stats: rp.stats }); if (!g.players.includes(p)) g.players.push(p); }
+    online.endMsg = m; resultTimer = 0;
+    for (const p of g.players) p.emote = { type: g.winner.includes(p.team) ? "happy" : "surprised", t: 10 };
+  }
+  function onlineNext(kind, swap) {
+    if (onlineIsHost()) { Net.send(kind === "rematch" ? { t: "rematch", swap: !!swap } : { t: "tolobby" }); if (kind === "tolobby") { endOnlineMatch(); show("room"); buildRoom(); } }
+    else { toast("ホスト（👑）が次を決めます。少し待って", "info"); if (kind === "tolobby") { endOnlineMatch(); show("room"); buildRoom(); } }
+  }
+
   // 検証用の窓口（機械検査・自動テスト用。ゲーム内では使わない）
-  window.__ninsai = { get g() { return g; }, get me() { return me; }, get tutorial() { return tutorial; }, queue, input, show, startMatch, startTutorial, save: () => save };
+  window.__ninsai = { get g() { return g; }, get me() { return me; }, get tutorial() { return tutorial; }, get mode() { return mode; }, get online() { return online; }, queue, input, show, startMatch, startTutorial, onlineCreate, onlineJoin, save: () => save };
 
   // ---------- 起動 ----------
   Render.loadAssets().then(() => { document.body.classList.add("ready"); });

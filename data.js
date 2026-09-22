@@ -168,7 +168,7 @@ const PINGS = [
 const DIFFICULTY = {
   easy:   { name: "やさしい", reaction: 0.9, aimErr: 0.28, notice: 0.10, scanUse: 0.35, crouchNear: false, hideRate: 0.5 },
   normal: { name: "ふつう",   reaction: 0.5, aimErr: 0.14, notice: 0.30, scanUse: 0.65, crouchNear: false, hideRate: 0.7 },
-  hard:   { name: "手ごわい", reaction: 0.28, aimErr: 0.06, notice: 0.55, scanUse: 0.9,  crouchNear: true,  hideRate: 0.9 },
+  hard:   { name: "手ごわい", reaction: 0.2, aimErr: 0.05, notice: 0.7, scanUse: 0.95, crouchNear: true, hideRate: 0.9, speedMul: 1.12, aggro: true },
 };
 
 // 擬態できない理由（HUD下中央）
@@ -201,6 +201,9 @@ const HOWTO = [
   { h: "合図", p: "「こっちへ」「敵がいた」「旗へ行く」の3種。2秒に1回。自由チャットはない。" },
 ];
 
+// オンライン対戦（合言葉の部屋）の接続先。Cloudflare Workers の無料枠で動く部屋サーバー（worker/）
+const ONLINE = { url: "https://ninsai-room.3moriguchi-3.workers.dev", codeChars: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", codeLen: 4, inputHz: 20, snapshotHz: 15, reconnectGraceSec: 20 };
+
 const CONTROLS = [
   ["移動", "左スティック", "WASD / 矢印"],
   ["しゃがみ（切替）", "しゃがむボタン", "C"],
@@ -212,6 +215,6 @@ const CONTROLS = [
   ["ポーズ（ひとり用のみ）", "≡", "Esc"],
 ];
 
-return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS };
+return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS, ONLINE };
 })();
 if (typeof module !== "undefined") module.exports = DATA;

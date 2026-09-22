@@ -90,11 +90,14 @@ def check_safety():
             hits.append(f"{w}: …{ctx}…")
     add("課金・決済・個人情報入力・自由入力の語", NG if hits else OK, " / ".join(hits[:5]) if hits else "肯定文での出現なし（『課金なし』等の否定文のみ）")
     urls = set(re.findall(r'https?://[^\s"\'<>)]+', text))
-    other = [u for u in urls if "ninja-dao.com" not in u]
-    add("外部リンク", NG if other else OK, "ninja-dao.com 以外: " + ", ".join(other) if other else f"ninja-dao.com のみ（{len(urls)}件）")
+    other = [u for u in urls if "ninja-dao.com" not in u and "workers.dev" not in u]
+    add("外部リンク", NG if other else OK, "ninja-dao.com / workers.dev 以外: " + ", ".join(other) if other else f"ninja-dao.com と部屋サーバー（workers.dev）のみ（{len(urls)}件）")
     add("非公式表示", OK if "非公式ファンゲーム" in rd("index.html") else NG, "タイトル画面と利用表示に記載" if "非公式ファンゲーム" in rd("index.html") else "見当たらない")
     fetches = re.findall(r"\bfetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon", "\n".join(rd(f) for f in ["game.js", "render.js", "sim.js", "data.js"]))
-    add("外部通信コード", NG if fetches else OK, f"{len(fetches)}件" if fetches else "fetch/XHR/WebSocket なし（sw.js のキャッシュ処理のみ）")
+    add("外部通信コード", NG if fetches else OK, f"{len(fetches)}件" if fetches else "game/render/sim/data に fetch/XHR/WebSocket なし（通信は net.js＝合言葉の部屋サーバーだけ）")
+    net = rd("net.js")
+    urls_net = set(re.findall(r'https?://[^\s"\'<>)]+', net))
+    add("net.js の接続先", NG if urls_net else OK, "URLの直書きなし（data.js の ONLINE.url と設定画面の値だけ）" if not urls_net else ", ".join(urls_net))
 
 
 def check_pwa():

@@ -1,0 +1,15 @@
+name = "ninsai-room"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# 合言葉ごとの部屋＝Durable Object（無料プランで使える SQLite 版クラス）
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# 公開後の URL は  https://ninsai-room.<あなたのサブドメイン>.workers.dev
+# ゲーム側 data.js の ONLINE.url をこれに合わせる（設定画面からも変更できる）

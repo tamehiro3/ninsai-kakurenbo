@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="忍彩かくれんぼ">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -30,6 +30,7 @@
       <div class="title-btns">
         <button class="btn primary big" id="btn-tutorial">練習（90秒の導入）<small class="tut-badge">まずはここから</small></button>
         <button class="btn primary big" data-go="lobby">ひとりで対戦（3対3・Bot）</button>
+        <button class="btn primary big" data-go="online">合言葉の部屋（オンライン対戦）<small>友だちと3対3・空きはBot</small></button>
         <div class="row">
           <button class="btn" data-go="howto">遊び方</button>
           <button class="btn" data-go="zukan">図鑑</button>
@@ -64,6 +65,32 @@
       <div id="dif-cards" class="cards"></div>
       <button class="btn primary big" id="btn-start-match">作戦会議へ →</button>
       <p class="mini">通信対戦は未実装。味方2人と相手3人は端末内のBot（人間と同じ可視情報・能力制限で動く）。</p>
+    </div>
+  </section>
+
+  <!-- オンライン：部屋を作る／合言葉で参加 -->
+  <section id="screen-online" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>合言葉の部屋</h2></header>
+    <div class="page-body">
+      <div class="card"><h3>部屋を作る</h3><p>4文字の合言葉が発行されます。友だちに伝えて同じ部屋に入ってもらいます（最大6人・足りない分はBot）。</p><button class="btn primary big" id="btn-room-create">部屋を作る</button></div>
+      <div class="card"><h3>合言葉で参加</h3><div class="code-row"><input id="room-code-input" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="例：AB7K"><button class="btn primary" id="btn-room-join">参加する</button></div></div>
+      <p class="mini" id="online-status"></p>
+      <p class="mini">通信するのは試合の入力（方向と行動）と状態だけ。名前はキャラ名を使い、自由チャットはありません。判定はサーバーが行い、同着は両チーム優勝です。</p>
+    </div>
+  </section>
+
+  <!-- オンライン：部屋（ロビー） -->
+  <section id="screen-room" class="screen page">
+    <header class="page-head"><button class="btn small" id="btn-room-leave">← 退室</button><h2>部屋 <span id="room-code" class="code-inline"></span></h2></header>
+    <div class="page-body">
+      <div class="card code-card"><div class="mini">合言葉（友だちに伝える）</div><div class="code-big" id="room-code-big"></div><button class="btn small" id="btn-code-copy">コピー</button></div>
+      <div class="teams"><div class="team-col" id="room-team-0"></div><div class="team-col" id="room-team-1"></div></div>
+      <h3>あなた <small>忍者・チーム・担当</small></h3>
+      <div class="row room-me" id="room-me"></div>
+      <h3>相手Botの強さ <small>ホストが決める</small></h3>
+      <div id="room-dif" class="cards"></div>
+      <button class="btn primary big" id="btn-room-start">開始（空きはBotで埋める）</button>
+      <p class="mini" id="room-hint"></p>
     </div>
   </section>
 
@@ -195,6 +222,7 @@
       <label class="row-set"><span>ボタンにキー名を表示（PC）</span><input type="checkbox" id="set-keys"></label>
       <label class="row-set"><span>画面の拡大率</span><input type="range" id="set-zoom" min="0.8" max="1.3" step="0.1"></label>
       <label class="row-set"><span>音量</span><input type="range" id="set-vol" min="0" max="1" step="0.1"></label>
+      <label class="row-set col"><span>オンラインのサーバーURL<small>空欄なら既定。自分で公開したWorkerのURLに変えられる</small></span><input id="set-server" inputmode="url" autocomplete="off" spellcheck="false"></label>
       <button class="btn primary big" id="btn-close-settings">閉じる</button>
       <button class="btn small danger" id="btn-reset-save">戦績と設定を消す</button>
     </div>
@@ -208,10 +236,11 @@
     </div>
   </div>
 
-  <script src="chars.js?v=3"></script>
-  <script src="data.js?v=3"></script>
-  <script src="sim.js?v=3"></script>
-  <script src="render.js?v=3"></script>
-  <script src="game.js?v=3"></script>
+  <script src="chars.js?v=4"></script>
+  <script src="data.js?v=4"></script>
+  <script src="sim.js?v=4"></script>
+  <script src="render.js?v=4"></script>
+  <script src="net.js?v=4"></script>
+  <script src="game.js?v=4"></script>
 </body>
 </html>

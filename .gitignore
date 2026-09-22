@@ -4,3 +4,6 @@ deploy_to_github.ps1
 tools/__pycache__/
 docs/jev_state.md
 docs/jev_result.json
+★オンライン部屋サーバーを公開する.bat
+worker/node_modules/
+worker/.wrangler/
