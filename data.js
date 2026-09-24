@@ -32,7 +32,7 @@ const RULES = {
   shotRadius: 0.35,
   shotCooldown: 2.5,
   markDuration: 8,
-  hitInvuln: 0.8,
+  hitInvuln: 0.6,       // 被弾後の無敵（設計図：HP・レベルアップ）
   returnWait: 3,
   protect: 2,
   flagRadius: 1.0,
@@ -46,6 +46,8 @@ const RULES = {
   footRun: 8, footCrouch: 3, footCamo: 1.5,
   bodyRadius: 0.30,
   bodyHeight: 1.40,
+  // HP・露見・手当・成長（正本は balance.js の BALANCE.hp。ここで参照できるようにする）
+  hp: (typeof BALANCE !== "undefined" ? BALANCE : require("./balance.js")).hp,
 };
 
 // 竹影の城（64×48）。tools/build_map.py --write で生成（左右対称）
@@ -128,6 +130,10 @@ const TEAMS = [
 
 // 39体の正本は chars.js（tools/build_chars.py が公式名簿から生成）。ここでは台詞と役割を足す
 const ALL = (typeof CHARS_ALL !== "undefined") ? CHARS_ALL : require("./chars.js");
+// 性能（能力値6軸・固有技・推奨系統）は balance.js（設計図から生成）
+const BAL = (typeof BALANCE !== "undefined") ? BALANCE : require("./balance.js");
+const BAL_BY_ID = Object.fromEntries(BAL.chars.map(b => [b.id, b]));
+const STAT_NAMES = [["spd", "速さ"], ["camo", "擬態"], ["atk", "攻撃"], ["def", "防御"], ["scout", "索敵"], ["esc", "逃走"]];
 const CHAR_EXTRA = {
   kohaku: {
     sword: "左腰", gameRole: "擬態の練習を案内する。面の傾きや姿勢で感情を表す",
@@ -150,7 +156,10 @@ const GENERIC_LINES = {
 const CHARS = ALL.map(c => Object.assign({}, c, CHAR_EXTRA[c.id] || {}, {
   lines: (CHAR_EXTRA[c.id] && CHAR_EXTRA[c.id].lines) || GENERIC_LINES,
   gameRole: (CHAR_EXTRA[c.id] && CHAR_EXTRA[c.id].gameRole) || "",
-}));
+}, BAL_BY_ID[c.id] ? { stats: BAL_BY_ID[c.id].stats, skill: BAL_BY_ID[c.id].skill, tree: BAL_BY_ID[c.id].tree, title: BAL_BY_ID[c.id].title, roleLabel: BAL_BY_ID[c.id].role, winPlan: BAL_BY_ID[c.id].winPlan, escapePlan: BAL_BY_ID[c.id].escapePlan }
+  : { stats: { spd: 3, camo: 3, atk: 3, def: 3, scout: 3, esc: 3 }, skill: null, tree: "選択", title: "", roleLabel: "", winPlan: "", escapePlan: "" }));
+const TREES = BAL.trees;
+const TREE_NAMES = BAL.treeNames;
 const charIndex = id => Math.max(0, CHARS.findIndex(c => c.id === id));
 
 const ROLES = [
@@ -186,7 +195,7 @@ const TUTORIAL = [
   { id: "move",  title: "① 移動", text: "左のスティックで動こう。光っている場所まで行ってみて。", goal: "指定地点へ", hint: "PCならWASDキー" },
   { id: "hide",  title: "② 擬態", text: "竹の柄の上で止まって「布」を押す。0.8秒で布が広がる。刃が通り過ぎるまで動かない。", goal: "刃に見つからずやり過ごす", hint: "動くと布が揺れて気づかれやすい" },
   { id: "scan",  title: "③ 見破り", text: "竹の柄のどこかに刃が隠れている。布の揺れを見つけたら、そちらを向いて「目」。練習では回復が早い。", goal: "見破りを当てる", hint: "前方100度・6m。壁は貫通しない" },
-  { id: "shot",  title: "④ 印投げ", text: "刃に印を2回当てると自陣に帰る。1回目の印は8秒で消えるから、消える前に2回目を。", goal: "刃を帰還させる", hint: "印は8m飛ぶ。2.5秒に1回" },
+  { id: "shot",  title: "④ 印投げ", text: "印を当てると相手のHPが減る（1発で約34）。HPが0になると12秒の「露見」＝走れず擬態も旗も使えない。3発当ててみよう。", goal: "刃を露見させる", hint: "印は8m飛ぶ。2.5秒に1回" },
   { id: "flag",  title: "⑤ 旗を掴む", text: "咲耶が敵の気を引いている。その隙に城の旗へ近づいて「旗を掴む」。", goal: "旗を掴む", hint: "旗の半径3mは擬態できない" },
 ];
 
@@ -195,7 +204,10 @@ const HOWTO = [
   { h: "時間", p: "競技240秒。未取得なら60秒の延長（擬態は最大8秒・見破りの回復は6秒に短縮）。それでも未取得なら引き分け。" },
   { h: "擬態", p: "竹（縦縞）・石（斑点）・木（横木目）の柄の上で止まり「布」を押すと0.8秒で布に包まれる。最大15秒、解除後6秒で再使用。柄の上を0.7m/sで忍び歩きできるが、布が揺れて気づかれやすい。柄の外へ出ると即解除。" },
   { h: "見破り", p: "前方100度・6mの扇。0.25秒後の向きで判定し、壁は貫通しない。当たった敵は3秒間、味方全員に輪郭が見える。空振りしても回復10秒。" },
-  { h: "印投げ", p: "紙の印を投げる（弾速14m/s・射程8m・回復2.5秒）。1回目で擬態解除＋発見3秒＋1秒減速。印が消える8秒以内に2回目を当てると相手は自陣へ帰還（3秒待機＋2秒保護）。撃破やポイントはない。" },
+  { h: "印投げとHP", p: "紙の印を投げる（弾速14m/s・射程8m・回復2.5秒）。当たると擬態解除＋発見3秒＋1秒減速＋HPが減る（基本34・攻撃/防御の能力値で増減）。HPは100（レベルで最大120）。被弾後0.6秒は無敵。HPが30未満だと擬態できない。撃破やポイントはない。" },
+  { h: "露見と手当", p: "HPが0になると12秒の「露見」：移動は70%、合図だけ可、擬態・攻撃・旗取得は不可で、敵からも見える。味方が1.5m以内で3秒静止すると手当で復帰（HP35）。自陣に戻るか12秒たつと自動帰還して全回復。" },
+  { h: "能力値と固有技", p: "39体それぞれに速さ・擬態・攻撃・防御・索敵・逃走（1〜5・合計21）と固有技が1つ。固有技はボタン（PCはX）で発動、回復16〜28秒。効果と対処は図鑑で確認できる。同じ技の重複は加算せず、長い残り時間だけ残る。" },
+  { h: "レベルと系統", p: "経験値はチーム共有。新しく見破る+12（擬態を解いたときだけ）、有効な一撃+3、HPを0に+12、手当で復帰+10、擬態で中央線越え+8、旗の周囲4m確保+8/3秒。80・200・360・560でLv2〜5。上がるたびに5秒以内に「影／技／護」を選ぶ（選ばないと推奨系統）。Lv5の系統には一試合一度の奥義がつく。" },
   { h: "旗のまわり", p: "半径3mの砂地では擬態できない。半径4m以内に8秒居座ると足元に位置の波紋が出る（敵味方とも同じ）。3秒離れるまで消えない。" },
   { h: "同着", p: "両チームの有効な旗取得が同じ処理tickなら「同着・両チーム優勝」。乱数やIDで片側を勝たせない。" },
   { h: "合図", p: "「こっちへ」「敵がいた」「旗へ行く」の3種。2秒に1回。自由チャットはない。" },
@@ -211,10 +223,13 @@ const CONTROLS = [
   ["見破り", "目ボタン（長押しで向きを指定）", "Q"],
   ["印投げ", "印ボタン（引っぱって狙う）", "クリック / Space"],
   ["旗を掴む", "範囲内で大きな「旗を掴む」", "F"],
+  ["固有技", "技ボタン", "X"],
+  ["奥義（Lv5・一度だけ）", "奥義ボタン", "Z"],
+  ["系統を選ぶ（レベルアップ時）", "画面上の3択", "1 / 2 / 3"],
   ["合図", "合図ボタン→3択", "R → 1/2/3"],
   ["ポーズ（ひとり用のみ）", "≡", "Esc"],
 ];
 
-return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS, ONLINE };
+return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, STAT_NAMES, TREES, TREE_NAMES, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS, ONLINE };
 })();
 if (typeof module !== "undefined") module.exports = DATA;

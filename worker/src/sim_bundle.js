@@ -1084,6 +1084,1281 @@ const CHARS_ALL = [
 ];
 
 
+// ===== balance.js（自動コピー・編集しない） =====
+// 忍彩かくれんぼ — 39体の性能（能力値6軸・固有技・推奨系統）と成長の正本。
+// 設計図：docs/character-balance-blueprint.txt（39体）・docs/hp-level-blueprint.txt（HP・レベルアップ）
+// 能力値は1〜5（合計21・3が共通値）。sim.js の balanceFor() が係数に変換する。tools/build_balance.py で生成（手直しはここで可）
+const BALANCE = {
+ "chars": [
+  {
+   "id": "jin",
+   "num": "001",
+   "role": "アタッカー",
+   "title": "火走りの先陣",
+   "stats": {
+    "spd": 4,
+    "camo": 2,
+    "atk": 5,
+    "def": 3,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "技",
+   "skill": {
+    "name": "火遁・残火",
+    "cd": 18,
+    "kind": "trail_reveal",
+    "effect": "前方へ火の帯を6m引き、3秒間、通過した敵を1.5秒可視化する。",
+    "counter": "壁越しには届かず、水遁で即座に消える。",
+    "params": {
+     "len": 6,
+     "life": 3,
+     "revealSec": 1.5
+    }
+   },
+   "winPlan": "短い直線を走って敵の視線を引き、味方の旗ルートを開ける。",
+   "escapePlan": "被発見時は残火を曲がり角に置き、別ルートへ切り返す。"
+  },
+  {
+   "id": "sakuya",
+   "num": "002",
+   "role": "スカウト",
+   "title": "口寄せの道案内",
+   "stats": {
+    "spd": 4,
+    "camo": 3,
+    "atk": 3,
+    "def": 3,
+    "scout": 5,
+    "esc": 3
+   },
+   "tree": "技",
+   "skill": {
+    "name": "口寄せ・白狐",
+    "cd": 22,
+    "kind": "track_nearest",
+    "effect": "白狐を8秒放ち、半径9m内で最も近い敵の足跡方向を味方に示す。",
+    "counter": "足跡は2秒前の情報。擬態中の静止者は検出しない。",
+    "params": {
+     "dur": 8,
+     "radius": 9,
+     "delay": 2
+    }
+   },
+   "winPlan": "中央前に白狐を送り、味方に安全な入口を伝える。",
+   "escapePlan": "白狐と逆方向へ逃げ、追手の判断を迷わせる。"
+  },
+  {
+   "id": "kohaku",
+   "num": "003",
+   "role": "インフィルトレーター",
+   "title": "変わり身の潜入者",
+   "stats": {
+    "spd": 4,
+    "camo": 5,
+    "atk": 3,
+    "def": 2,
+    "scout": 2,
+    "esc": 5
+   },
+   "tree": "影",
+   "skill": {
+    "name": "変わり身・狐札",
+    "cd": 24,
+    "kind": "substitution",
+    "effect": "被弾時に丸太を残し、入力方向へ3m瞬間移動して印を1回だけ無効化する。",
+    "counter": "発動地点に煙と移動方向が0.5秒見える。壁は越えられない。",
+    "params": {
+     "blink": 3,
+     "smokeSec": 0.5,
+     "armSec": 8
+    }
+   },
+   "winPlan": "擬態をつないで旗の側面まで入り、混戦の最後に抜ける。",
+   "escapePlan": "追撃の2発目を変わり身でかわし、擬態帯へ飛び込む。"
+  },
+  {
+   "id": "shiba",
+   "num": "004",
+   "role": "コントローラー",
+   "title": "水路の守り手",
+   "stats": {
+    "spd": 3,
+    "camo": 3,
+    "atk": 3,
+    "def": 4,
+    "scout": 4,
+    "esc": 4
+   },
+   "tree": "護",
+   "skill": {
+    "name": "水遁・水鏡",
+    "cd": 20,
+    "kind": "zone_water",
+    "effect": "直径5mの水鏡を5秒展開。中の味方は足音が消え、敵の飛び道具は20%遅くなる。",
+    "counter": "水鏡そのものは遠くから見える。火遁で2秒短縮される。",
+    "params": {
+     "r": 2.5,
+     "dur": 5,
+     "projSlow": 0.2
+    }
+   },
+   "winPlan": "橋や門で水鏡を置き、味方の横断と撤退を助ける。",
+   "escapePlan": "水鏡の端で方向転換し、遅くなった追撃を障害物へ誘う。"
+  },
+  {
+   "id": "kanaoni",
+   "num": "005",
+   "role": "ガーディアン",
+   "title": "金剛の門番",
+   "stats": {
+    "spd": 2,
+    "camo": 2,
+    "atk": 5,
+    "def": 5,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "金遁・金剛壁",
+    "cd": 24,
+    "kind": "wall",
+    "effect": "幅3mの金属壁を4秒生成し、印投げと見破り扇を遮る。",
+    "counter": "壁は両チームを遮り、設置前に0.7秒の予告線が出る。",
+    "params": {
+     "len": 3,
+     "dur": 4,
+     "warnSec": 0.7
+    }
+   },
+   "winPlan": "旗前の射線を切り、味方が掴む2秒を作る。",
+   "escapePlan": "壁を背後に置いて追撃を止め、別の出口へ歩く。"
+  },
+  {
+   "id": "oto",
+   "num": "006",
+   "role": "サポート",
+   "title": "巻物の救護役",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 2,
+    "def": 4,
+    "scout": 5,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "口寄せ・守り兎",
+    "cd": 20,
+    "kind": "ally_shield",
+    "effect": "味方1人へ守り兎を付け、8秒以内の最初の減速を無効化し、印の残り時間を3秒減らす。",
+    "counter": "帰還直前の2印目は防げない。対象に兎アイコンが見える。",
+    "params": {
+     "dur": 8,
+     "range": 8,
+     "markReduceSec": 3
+    }
+   },
+   "winPlan": "先行役へ守り兎を渡し、自分は後方から索敵する。",
+   "escapePlan": "自分に使う場合は早めに発動し、印が消えるまで遮蔽物を回る。"
+  },
+  {
+   "id": "rotten",
+   "num": "007",
+   "role": "トラッパー",
+   "title": "毒霧の待ち伏せ",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 4,
+    "def": 2,
+    "scout": 4,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "毒霧・紫煙",
+    "cd": 22,
+    "kind": "zone_fog",
+    "effect": "直径4mの霧を6秒設置。敵は視界が狭まり、外へ出た後も足跡が2秒残る。",
+    "counter": "霧は双方の視線を遮り、風遁で半分の時間に短縮される。",
+    "params": {
+     "r": 2.0,
+     "dur": 6,
+     "trailSec": 2
+    }
+   },
+   "winPlan": "敵の見破りを霧の中で空振りさせ、側面から印を当てる。",
+   "escapePlan": "自分も霧で視界を失うため、出口を決めてから投げる。"
+  },
+  {
+   "id": "nagisa",
+   "num": "008",
+   "role": "デコイ",
+   "title": "影分身の囮",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 2,
+    "def": 3,
+    "scout": 3,
+    "esc": 5
+   },
+   "tree": "影",
+   "skill": {
+    "name": "影分身・走り影",
+    "cd": 18,
+    "kind": "decoy_run",
+    "effect": "現在の向きへ6秒走る分身を出す。分身は索敵と印を1回吸収して消える。",
+    "counter": "分身は旗を掴めず、足音の間隔が一定で見破れる。",
+    "params": {
+     "dur": 6
+    }
+   },
+   "winPlan": "分身を正面へ走らせ、本体は擬態して反対側へ回る。",
+   "escapePlan": "追われた瞬間に分身と進路を交差させ、標的を迷わせる。"
+  },
+  {
+   "id": "anne",
+   "num": "009",
+   "role": "コントローラー",
+   "title": "影縫いの管制役",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 3,
+    "def": 3,
+    "scout": 5,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "影縫い・黒団子",
+    "cd": 21,
+    "kind": "freeze_bomb",
+    "effect": "着弾地点から半径2.5mの敵を1.2秒停止させる団子を投げる。",
+    "counter": "着弾まで0.8秒、床に黒い予告円が出る。擬態は解除しない。",
+    "params": {
+     "r": 2.5,
+     "stun": 1.2,
+     "delay": 0.8,
+     "range": 6
+    }
+   },
+   "winPlan": "味方の見破りに合わせ、逃げ道へ先置きする。",
+   "escapePlan": "敵との間に投げ、停止中に角を二つ曲がる。"
+  },
+  {
+   "id": "dan",
+   "num": "010",
+   "role": "デュエリスト",
+   "title": "閃光の切り込み",
+   "stats": {
+    "spd": 5,
+    "camo": 2,
+    "atk": 5,
+    "def": 2,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "技",
+   "skill": {
+    "name": "閃光・白刃",
+    "cd": 17,
+    "kind": "dash",
+    "effect": "5mを高速移動し、通過線の敵を1秒白く発光させる。",
+    "counter": "移動前に0.35秒光り、壁と金剛壁で止まる。",
+    "params": {
+     "dist": 5,
+     "revealSec": 1,
+     "warnSec": 0.35
+    }
+   },
+   "winPlan": "見えた敵へ一気に間合いを詰め、印投げへつなぐ。",
+   "escapePlan": "追手を横切るように使い、照準を大きく振らせる。"
+  },
+  {
+   "id": "hinanojoh",
+   "num": "011",
+   "role": "ボマー",
+   "title": "焙烙の爆破役",
+   "stats": {
+    "spd": 3,
+    "camo": 2,
+    "atk": 5,
+    "def": 3,
+    "scout": 4,
+    "esc": 4
+   },
+   "tree": "技",
+   "skill": {
+    "name": "火遁・焙烙玉",
+    "cd": 22,
+    "kind": "bomb",
+    "effect": "2秒後に破裂する玉を投げ、半径3mの敵を吹き飛ばして擬態を解除する。",
+    "counter": "点火音と赤い導火線が見える。遮蔽物の裏へ逃げれば回避可能。",
+    "params": {
+     "fuse": 2,
+     "r": 3,
+     "push": 3,
+     "range": 5
+    }
+   },
+   "winPlan": "旗の入口を一時的に空け、味方の進入を作る。",
+   "escapePlan": "足元へ落として走り、追手だけを吹き戻す。"
+  },
+  {
+   "id": "torika",
+   "num": "012",
+   "role": "アサシン",
+   "title": "毒刃の追跡者",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 4,
+    "def": 2,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "毒手裏剣・追香",
+    "cd": 19,
+    "kind": "poison_mark",
+    "effect": "次の印命中に追香を付与し、6秒間だけ対象の移動方向を矢印で表示する。",
+    "counter": "位置そのものは表示せず、守り兎で追香を除去できる。",
+    "params": {
+     "dur": 6,
+     "armSec": 10
+    }
+   },
+   "winPlan": "逃げる索敵役に付け、味方と挟み込む。",
+   "escapePlan": "命中させるまで効果がなく、無理に追わず擬態へ戻る。"
+  },
+  {
+   "id": "atoza",
+   "num": "013",
+   "role": "ブルーザー",
+   "title": "逢魔の重戦士",
+   "stats": {
+    "spd": 3,
+    "camo": 3,
+    "atk": 5,
+    "def": 4,
+    "scout": 3,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "逢魔刻・鬼灯",
+    "cd": 26,
+    "kind": "berserk",
+    "effect": "8秒間、攻撃5・防御5相当になるが、自身が常に薄赤く可視化される。",
+    "counter": "擬態不可で位置が明確。効果終了後2秒は速度が10%低下。",
+    "params": {
+     "dur": 8,
+     "afterSlowSec": 2
+    }
+   },
+   "winPlan": "敵が旗に集まる延長戦で正面から押し返す。",
+   "escapePlan": "逃走には向かないため、発動前に帰還路を確保する。"
+  },
+  {
+   "id": "hayate",
+   "num": "014",
+   "role": "リコン",
+   "title": "鷹の目の偵察役",
+   "stats": {
+    "spd": 5,
+    "camo": 2,
+    "atk": 3,
+    "def": 2,
+    "scout": 5,
+    "esc": 4
+   },
+   "tree": "技",
+   "skill": {
+    "name": "鷹の目・俯瞰",
+    "cd": 24,
+    "kind": "hawk_eye",
+    "effect": "3秒間静止して鷹視点へ移り、半径14mの動いている敵を味方地図に2秒表示する。",
+    "counter": "静止した擬態者は映らず、本体は無防備で音も聞こえにくい。",
+    "params": {
+     "channel": 3,
+     "radius": 14,
+     "showSec": 2
+    }
+   },
+   "winPlan": "安全な後方から敵の進軍ルートを読み、合図を出す。",
+   "escapePlan": "見つかったら視点を即解除し、高速で長い直線を離脱する。"
+  },
+  {
+   "id": "uka",
+   "num": "015",
+   "role": "ゾーナー",
+   "title": "九尾火の封鎖役",
+   "stats": {
+    "spd": 3,
+    "camo": 3,
+    "atk": 4,
+    "def": 4,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "九尾の焔・狐火陣",
+    "cd": 23,
+    "kind": "fox_fires",
+    "effect": "三つの狐火を5秒置き、触れた敵を2秒可視化する。",
+    "counter": "狐火は明るく見え、間隔の広い側から抜けられる。水遁で一つ消える。",
+    "params": {
+     "count": 3,
+     "dur": 5,
+     "revealSec": 2
+    }
+   },
+   "winPlan": "旗周囲の三方向を監視し、残る一方向を味方が見る。",
+   "escapePlan": "追跡路に三角形を作り、内側を横切って追手を可視化する。"
+  },
+  {
+   "id": "ganzi",
+   "num": "016",
+   "role": "ガーディアン",
+   "title": "漆黒の幻術師",
+   "stats": {
+    "spd": 2,
+    "camo": 4,
+    "atk": 2,
+    "def": 5,
+    "scout": 5,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "幻術・漆黒",
+    "cd": 25,
+    "kind": "zone_dark",
+    "effect": "直径6mを4秒暗くする。味方には敵の輪郭、敵には味方の輪郭が表示されない。",
+    "counter": "範囲の外からは黒い球として位置が分かり、見破りで1秒短縮。",
+    "params": {
+     "r": 3.0,
+     "dur": 4
+    }
+   },
+   "winPlan": "旗取得の最後の数秒を暗幕で守る。",
+   "escapePlan": "球の端を二度出入りし、追手の距離感を崩す。"
+  },
+  {
+   "id": "yui",
+   "num": "017",
+   "role": "サポート",
+   "title": "桜吹雪の目くらまし",
+   "stats": {
+    "spd": 4,
+    "camo": 5,
+    "atk": 2,
+    "def": 3,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "護",
+   "skill": {
+    "name": "桜吹雪・花隠れ",
+    "cd": 20,
+    "kind": "zone_petals",
+    "effect": "前方へ花びらを5秒流し、範囲内の味方は擬態開始が0.4秒速くなる。",
+    "counter": "花びらが進路を知らせる。攻撃すると恩恵は即終了。",
+    "params": {
+     "dur": 5,
+     "camoStartFaster": 0.4,
+     "r": 2.5
+    }
+   },
+   "winPlan": "潜入役二人を同時に擬態させ、敵の索敵回数を削る。",
+   "escapePlan": "花の流れに沿わず斜めに離れ、予測射撃を外す。"
+  },
+  {
+   "id": "fuuta",
+   "num": "018",
+   "role": "ランナー",
+   "title": "風走りの旗手",
+   "stats": {
+    "spd": 5,
+    "camo": 3,
+    "atk": 4,
+    "def": 2,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "風遁・追風",
+    "cd": 18,
+    "kind": "tailwind",
+    "effect": "4秒間、前方移動が15%速くなり、毒霧と桜吹雪を押し流す。",
+    "counter": "曲がると加速が落ち、使用中は足元の風筋が見える。",
+    "params": {
+     "dur": 4,
+     "speedBonus": 0.15
+    }
+   },
+   "winPlan": "門を抜けた直線で使い、旗までの最後の距離を詰める。",
+   "escapePlan": "直線離脱に強いが、出口に影縫いを置かれると止まる。"
+  },
+  {
+   "id": "rei",
+   "num": "019",
+   "role": "アサシン",
+   "title": "代償の奇襲者",
+   "stats": {
+    "spd": 5,
+    "camo": 3,
+    "atk": 5,
+    "def": 1,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "人身御供・身代札",
+    "cd": 28,
+    "kind": "sacrifice",
+    "effect": "自分の印を一つ消し、4秒間攻撃速度を上げる代わりに効果後6秒は防御1になる。",
+    "counter": "印がないと使用不可。発動時に大きな札が見える。",
+    "params": {
+     "dur": 4,
+     "afterSec": 6,
+     "heal": 15
+    }
+   },
+   "winPlan": "1印を受けてから反撃し、短時間で敵前衛を退かせる。",
+   "escapePlan": "逃走用には危険。効果中に角へ入り、終了後は味方と合流する。"
+  },
+  {
+   "id": "sattva",
+   "num": "020",
+   "role": "サポート",
+   "title": "涅槃の浄化役",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 2,
+    "def": 5,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "涅槃・円光",
+    "cd": 24,
+    "kind": "cleanse",
+    "effect": "半径4mの味方全員から追香・毒・方向表示を除き、印の残り時間を2秒減らす。",
+    "counter": "印そのものは消さず、使用中の円光で集合位置が敵にも分かる。",
+    "params": {
+     "r": 4,
+     "revealCut": 2
+    }
+   },
+   "winPlan": "被弾した味方を安全地帯へ集め、帰還を防ぐ。",
+   "escapePlan": "自分だけのために温存せず、撤退地点で仲間と使う。"
+  },
+  {
+   "id": "nekomata",
+   "num": "021",
+   "role": "デコイ",
+   "title": "猫影の撹乱者",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 4,
+    "def": 2,
+    "scout": 2,
+    "esc": 5
+   },
+   "tree": "影",
+   "skill": {
+    "name": "影分身・猫化け",
+    "cd": 21,
+    "kind": "decoy_static",
+    "effect": "その場に擬態姿の分身を12秒置く。敵の見破りを1回吸収して消える。",
+    "counter": "分身は微動せず、印投げでも消える。味方には半透明表示。",
+    "params": {
+     "dur": 12
+    }
+   },
+   "winPlan": "本物らしい擬態地点へ置き、敵の見破りを浪費させる。",
+   "escapePlan": "分身を残して角を曲がり、足音を忍び足へ切り替える。"
+  },
+  {
+   "id": "janome",
+   "num": "022",
+   "role": "スカウト",
+   "title": "蛇使いの追跡者",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 4,
+    "def": 2,
+    "scout": 5,
+    "esc": 3
+   },
+   "tree": "技",
+   "skill": {
+    "name": "口寄せ・白蛇",
+    "cd": 20,
+    "kind": "snake",
+    "effect": "白蛇が壁沿いを7秒進み、3m以内の擬態開始痕を一度だけ知らせる。",
+    "counter": "現在位置ではなく開始地点だけ。蛇は明るく、印で消せる。",
+    "params": {
+     "dur": 7,
+     "radius": 3,
+     "speed": 3
+    }
+   },
+   "winPlan": "擬態帯へ先に蛇を入れ、敵が移動した方向を読む。",
+   "escapePlan": "追われたら蛇を別の壁へ送り、本体の選択肢を隠す。"
+  },
+  {
+   "id": "benten",
+   "num": "023",
+   "role": "サポート",
+   "title": "祝詞の鼓舞役",
+   "stats": {
+    "spd": 3,
+    "camo": 3,
+    "atk": 2,
+    "def": 4,
+    "scout": 5,
+    "esc": 4
+   },
+   "tree": "護",
+   "skill": {
+    "name": "祝詞・疾拍子",
+    "cd": 26,
+    "kind": "tempo",
+    "effect": "5秒演奏し、半径6mの味方のクールダウンを各2秒だけ進める。",
+    "counter": "演奏音は10m届き、途中で被弾すると中断する。重複不可。",
+    "params": {
+     "channel": 5,
+     "r": 6,
+     "cdReduce": 2
+    }
+   },
+   "winPlan": "安全な遮蔽物で味方の固有技を整え、二段攻勢を作る。",
+   "escapePlan": "演奏せず囮の音だけを1秒鳴らし、逆方向へ走る選択もできる。"
+  },
+  {
+   "id": "karma",
+   "num": "024",
+   "role": "コントローラー",
+   "title": "罪業の領域主",
+   "stats": {
+    "spd": 2,
+    "camo": 3,
+    "atk": 5,
+    "def": 5,
+    "scout": 4,
+    "esc": 2
+   },
+   "tree": "護",
+   "skill": {
+    "name": "領域・罪業",
+    "cd": 27,
+    "kind": "zone_null",
+    "effect": "直径6mを5秒封鎖。中の敵は固有技を使えず、通常行動だけになる。",
+    "counter": "設置に1秒かかり、範囲外へ出れば即解除。本人も移動が遅くなる。",
+    "params": {
+     "r": 3.0,
+     "dur": 5,
+     "setupSec": 1
+    }
+   },
+   "winPlan": "旗前で敵の逃走技を止め、味方の印投げを通す。",
+   "escapePlan": "逃げる技ではないため、味方の壁や暗幕と組み合わせる。"
+  },
+  {
+   "id": "ichiya",
+   "num": "025",
+   "role": "ルートメーカー",
+   "title": "忍び文字の案内役",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 2,
+    "def": 3,
+    "scout": 4,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "忍びいろは・抜け道",
+    "cd": 19,
+    "kind": "arrows",
+    "effect": "地面へ10秒残る矢印を3枚描く。味方は上を通ると2秒だけ足音が消える。",
+    "counter": "敵にも墨跡は見える。矢印どおり進むとは限らない。",
+    "params": {
+     "dur": 10,
+     "count": 3,
+     "silentSec": 2
+    }
+   },
+   "winPlan": "本命と偽ルートを混ぜ、チームの進行方向を隠す。",
+   "escapePlan": "自分は三枚目だけ逆向きに使い、追手の読みを外す。"
+  },
+  {
+   "id": "nemu",
+   "num": "026",
+   "role": "インフィルトレーター",
+   "title": "地形を描く擬態師",
+   "stats": {
+    "spd": 3,
+    "camo": 5,
+    "atk": 2,
+    "def": 4,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "影",
+   "skill": {
+    "name": "動植綵絵・描景",
+    "cd": 25,
+    "kind": "paint_zone",
+    "effect": "4m四方に8秒だけ擬態可能な偽の竹・石・木エリアを描く。",
+    "counter": "色がわずかに鮮やかで、見破りを受けると2秒で消える。",
+    "params": {
+     "size": 4,
+     "dur": 8
+    }
+   },
+   "winPlan": "通常は隠れられない中継点を作り、潜入ルートを一つ増やす。",
+   "escapePlan": "追手の前に描景を置き、入るふりをして外周へ逃げる。"
+  },
+  {
+   "id": "karura",
+   "num": "027",
+   "role": "ランナー",
+   "title": "雷羽の急襲者",
+   "stats": {
+    "spd": 5,
+    "camo": 2,
+    "atk": 4,
+    "def": 2,
+    "scout": 4,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "雷遁・迅雷羽",
+    "cd": 17,
+    "kind": "leap",
+    "effect": "指定方向へ4m跳び、着地点から2mの敵の照準を0.6秒乱す。",
+    "counter": "着地点に雷の予告が0.3秒出る。壁と領域を越えない。",
+    "params": {
+     "dist": 4,
+     "jitterR": 2,
+     "jitterSec": 0.6,
+     "warnSec": 0.3
+    }
+   },
+   "winPlan": "見破り成功直後に距離を詰め、敵の退路へ着地する。",
+   "escapePlan": "追手の横へ跳んで照準を乱し、そのまま遮蔽物へ走る。"
+  },
+  {
+   "id": "xiaolan",
+   "num": "028",
+   "role": "ピール",
+   "title": "太極の護衛役",
+   "stats": {
+    "spd": 4,
+    "camo": 3,
+    "atk": 4,
+    "def": 4,
+    "scout": 3,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "口寄せ・双龍円",
+    "cd": 16,
+    "kind": "parry",
+    "effect": "2秒間構え、前方から来た最初の印を反射せず地面へ落とす。",
+    "counter": "側面と背後には無効。構え中は速度50%で擬態不可。",
+    "params": {
+     "dur": 2,
+     "speedMul": 0.5
+    }
+   },
+   "winPlan": "旗を掴む味方の正面に立ち、最後の一投を防ぐ。",
+   "escapePlan": "後退しながら構え、角に着いたら解除して走る。"
+  },
+  {
+   "id": "aum",
+   "num": "029",
+   "role": "ブルーザー",
+   "title": "巨人の破城役",
+   "stats": {
+    "spd": 2,
+    "camo": 2,
+    "atk": 5,
+    "def": 5,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "護",
+   "skill": {
+    "name": "巨人の一撃",
+    "cd": 23,
+    "kind": "smash",
+    "effect": "前方2.5mを叩き、敵と設置物を3m押し出す。金剛壁も破壊する。",
+    "counter": "振りかぶり0.9秒。横移動で避けられ、外すと1秒停止。",
+    "params": {
+     "reach": 2.5,
+     "push": 3,
+     "windup": 0.9,
+     "missStun": 1
+    }
+   },
+   "winPlan": "旗周囲の敵と壁をまとめて押し、取得範囲を空ける。",
+   "escapePlan": "背後へ置いた設置物を壊し、塞がれた退路を開く。"
+  },
+  {
+   "id": "konga",
+   "num": "030",
+   "role": "デコイ",
+   "title": "拳影の連携役",
+   "stats": {
+    "spd": 4,
+    "camo": 3,
+    "atk": 4,
+    "def": 4,
+    "scout": 2,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "影分身・連拳",
+    "cd": 20,
+    "kind": "echo_clone",
+    "effect": "分身が3秒間、自分の0.6秒前の動きを再現し、印を一回吸収する。",
+    "counter": "常に少し遅れるので注視すれば本体が分かる。範囲攻撃で同時に消える。",
+    "params": {
+     "dur": 3,
+     "delay": 0.6
+    }
+   },
+   "winPlan": "本体と分身で入口を二重に見せ、相手の照準を散らす。",
+   "escapePlan": "急な切り返しを二度入れ、遅れる分身と交差する。"
+  },
+  {
+   "id": "shion",
+   "num": "031",
+   "role": "トラッパー",
+   "title": "野アザミの罠師",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 4,
+    "def": 2,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "影",
+   "skill": {
+    "name": "野アザミ・棘道",
+    "cd": 21,
+    "kind": "thorns",
+    "effect": "長さ5mの細い棘道を8秒設置。踏んだ敵の足跡を3秒表示する。",
+    "counter": "棘は床に見え、忍び足なら発動範囲が半分になる。",
+    "params": {
+     "len": 5,
+     "dur": 8,
+     "revealSec": 3
+    }
+   },
+   "winPlan": "細い通路に斜め置きし、回避する敵を味方の射線へ誘う。",
+   "escapePlan": "追手との間に置くが、自分の帰路を塞がない角度にする。"
+  },
+  {
+   "id": "seori",
+   "num": "032",
+   "role": "コントローラー",
+   "title": "呪刻の遅延役",
+   "stats": {
+    "spd": 2,
+    "camo": 4,
+    "atk": 4,
+    "def": 4,
+    "scout": 5,
+    "esc": 2
+   },
+   "tree": "護",
+   "skill": {
+    "name": "丑の刻参り・呪標",
+    "cd": 24,
+    "kind": "hex",
+    "effect": "視認中の敵一人へ呪標。4秒後まで範囲8m内なら固有技の回復を4秒遅らせる。",
+    "counter": "対象に大きな藁人形印が出る。8m外へ離れれば不発。",
+    "params": {
+     "dur": 4,
+     "range": 8,
+     "cdDelay": 4
+    }
+   },
+   "winPlan": "逃走技を使った直後の敵へ付け、次の進入を遅らせる。",
+   "escapePlan": "自分の逃走は弱いので、付与後すぐ味方の後ろへ下がる。"
+  },
+  {
+   "id": "quon",
+   "num": "033",
+   "role": "オールラウンダー",
+   "title": "二択を迫る猫目",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 3,
+    "def": 3,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "選択",
+   "skill": {
+    "name": "猫の目の選択",
+    "cd": 18,
+    "kind": "cat_choice",
+    "effect": "発動時に「白目＝5秒索敵+1」「黒目＝5秒擬態+1」を選ぶ。",
+    "counter": "選択色が頭上に見え、途中変更不可。攻撃補正は得ない。",
+    "params": {
+     "dur": 5
+    }
+   },
+   "winPlan": "敵の構成と残り時間を見て、侵入と迎撃を切り替える。",
+   "escapePlan": "黒目で隠れるか、白目で追手を先に見つけて避ける。"
+  },
+  {
+   "id": "magoichi",
+   "num": "034",
+   "role": "マークスマン",
+   "title": "一発必中の狙撃手",
+   "stats": {
+    "spd": 2,
+    "camo": 2,
+    "atk": 5,
+    "def": 3,
+    "scout": 5,
+    "esc": 4
+   },
+   "tree": "技",
+   "skill": {
+    "name": "一発必中・狙撃印",
+    "cd": 20,
+    "kind": "snipe",
+    "effect": "1.2秒静止して構え、射程14mの高速印を一発撃つ。",
+    "counter": "赤い照準線が0.6秒見え、被弾や移動で中断する。",
+    "params": {
+     "channel": 1.2,
+     "range": 14,
+     "speed": 28
+    }
+   },
+   "winPlan": "味方の索敵で見えた敵を遠距離から牽制する。",
+   "escapePlan": "逃走時は通常印を使い、狙撃のために止まらない。"
+  },
+  {
+   "id": "ibuki",
+   "num": "035",
+   "role": "サポート",
+   "title": "帰魂の立て直し役",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 3,
+    "def": 4,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "泰山府君祭・帰魂",
+    "cd": 25,
+    "kind": "soul_return",
+    "effect": "帰還中の味方一人の待機を1.5秒短縮し、復帰後の保護を1秒延長する。",
+    "counter": "生存中の味方には使えず、同じ帰還へ一度だけ。",
+    "params": {
+     "returnCut": 1.5,
+     "protectAdd": 1
+    }
+   },
+   "winPlan": "人数不利の時間を短くし、再集合を早める。",
+   "escapePlan": "自分の直接逃走技ではないため、擬態を早めに使う。"
+  },
+  {
+   "id": "oen",
+   "num": "036",
+   "role": "サポート",
+   "title": "糸脈の護送役",
+   "stats": {
+    "spd": 3,
+    "camo": 4,
+    "atk": 2,
+    "def": 5,
+    "scout": 4,
+    "esc": 3
+   },
+   "tree": "護",
+   "skill": {
+    "name": "糸脈・結び糸",
+    "cd": 21,
+    "kind": "thread",
+    "effect": "味方一人と8秒接続。互いが6m以内なら被発見時間を20%短縮する。",
+    "counter": "糸は近距離で敵にも見え、6mを超えると切れる。",
+    "params": {
+     "dur": 8,
+     "linkRange": 6,
+     "range": 8
+    }
+   },
+   "winPlan": "旗手と並走し、可視化を早く解いて再潜入を助ける。",
+   "escapePlan": "追われたら糸を切る方向へ分かれ、敵の標的を割る。"
+  },
+  {
+   "id": "izuna",
+   "num": "037",
+   "role": "インフィルトレーター",
+   "title": "飯綱の最速隠密",
+   "stats": {
+    "spd": 5,
+    "camo": 5,
+    "atk": 2,
+    "def": 2,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "影",
+   "skill": {
+    "name": "飯綱の法・狐駆け",
+    "cd": 23,
+    "kind": "fox_dash",
+    "effect": "6秒間、擬態中の移動速度が通常の70%まで上がる。",
+    "counter": "布の揺れが大きくなり、1.5m以内では自動発見される。",
+    "params": {
+     "dur": 6,
+     "camoSpeedRatio": 0.7
+    }
+   },
+   "winPlan": "擬態帯を素早く渡り、敵が数える前に位置を変える。",
+   "escapePlan": "同じ柄の中を横へ逃げ、遠距離の見破りを空振りさせる。"
+  },
+  {
+   "id": "sekishusai",
+   "num": "038",
+   "role": "デュエリスト",
+   "title": "無刀取りの反撃役",
+   "stats": {
+    "spd": 3,
+    "camo": 2,
+    "atk": 5,
+    "def": 5,
+    "scout": 3,
+    "esc": 3
+   },
+   "tree": "技",
+   "skill": {
+    "name": "無刀取り",
+    "cd": 18,
+    "kind": "counter_stance",
+    "effect": "1.1秒だけ構え、正面2m以内の敵が印を投げるとその攻撃を無効化し、敵を0.8秒止める。",
+    "counter": "構えの青い円が見える。遠距離・側面・固有設置物には無効。",
+    "params": {
+     "dur": 1.1,
+     "reach": 2,
+     "stun": 0.8,
+     "speedMul": 0.7
+    }
+   },
+   "winPlan": "狭い門で相手の攻撃を誘い、味方の反撃を確定させる。",
+   "escapePlan": "相手に見せて撃たせず、その1.1秒で角まで下がる。"
+  },
+  {
+   "id": "sasagane",
+   "num": "039",
+   "role": "オールラウンダー",
+   "title": "根の国の変転者",
+   "stats": {
+    "spd": 4,
+    "camo": 4,
+    "atk": 3,
+    "def": 3,
+    "scout": 3,
+    "esc": 4
+   },
+   "tree": "選択",
+   "skill": {
+    "name": "根渡り・影穴",
+    "cd": 26,
+    "kind": "shadow_gate",
+    "effect": "影の上に入口を置き、6秒以内に5m以内の別の影へ出口を置くと一度だけ移動できる。",
+    "counter": "入口と出口は紫に光り、敵も一度だけ追って入れる。",
+    "params": {
+     "window": 6,
+     "range": 5,
+     "followSec": 3
+    }
+   },
+   "winPlan": "壁を越えずに高低差のない二点をつなぎ、奇襲ルートを作る。",
+   "escapePlan": "追手が入れる危険を見越し、出口に味方を待たせる。"
+  }
+ ],
+ "hp": {
+  "byLevel": [
+   100,
+   105,
+   110,
+   115,
+   120
+  ],
+  "xpThresholds": [
+   0,
+   80,
+   200,
+   360,
+   560
+  ],
+  "exposeSec": 12,
+  "exposeMove": 0.7,
+  "healSec": 3,
+  "healHp": 35,
+  "healSecFast": 2.3,
+  "healHpFast": 45,
+  "healRange": 1.5,
+  "invulnSec": 0.6,
+  "revealSec": 3,
+  "minCamoHp": 30,
+  "pickSec": 5,
+  "baseDamage": 34,
+  "xp": {
+   "reveal": 12,
+   "hit": 3,
+   "hp0": 12,
+   "heal": 10,
+   "cross": 8,
+   "hold": 8,
+   "holdEvery": 3
+  }
+ },
+ "trees": {
+  "影": {
+   "2": {
+    "name": "音無し足",
+    "effect": "忍び足の移動速度を10%上げる。"
+   },
+   "3": {
+    "name": "残り香断ち",
+    "effect": "見破り・被弾による可視化を0.5秒短くする。"
+   },
+   "4": {
+    "name": "擬態熟練",
+    "effect": "擬態持続を3秒延ばし、開始を0.1秒速くする。"
+   },
+   "5": {
+    "name": "奥義・影渡り",
+    "effect": "一試合一度、5秒間だけ擬態移動速度が通常の70%になる。旗の3m以内で解除。"
+   }
+  },
+  "技": {
+   "2": {
+    "name": "早印",
+    "effect": "通常の印投げクールダウンを0.15秒短縮する。"
+   },
+   "3": {
+    "name": "広眼",
+    "effect": "見破り半径を0.5m広げる。角度と壁判定は共通。"
+   },
+   "4": {
+    "name": "忍術研鑽",
+    "effect": "キャラクター固有技のクールダウンを15%短縮する。"
+   },
+   "5": {
+    "name": "奥義・再演",
+    "effect": "一試合一度、使用直後の固有技クールダウンを即時に完了する。"
+   }
+  },
+  "護": {
+   "2": {
+    "name": "厚布",
+    "effect": "受けるダメージをさらに4%減らす。"
+   },
+   "3": {
+    "name": "最初の一印",
+    "effect": "HP満タン後の最初の一撃だけ、ダメージを5減らす。再発動まで15秒。"
+   },
+   "4": {
+    "name": "手当上手",
+    "effect": "味方の手当を3.0秒から2.3秒にし、復帰HPを35から45へ上げる。"
+   },
+   "5": {
+    "name": "奥義・不退陣",
+    "effect": "一試合一度、8秒間、自分から4m以内の味方が受けるダメージを12%減らす。"
+   }
+  }
+ },
+ "treeNames": {
+  "影": "影（潜入・擬態）",
+  "技": "技（見破り・印・固有技）",
+  "護": "護（耐久・手当・守り）"
+ },
+ "xpActions": [
+  {
+   "action": "敵を新しく見破る",
+   "xp": 12,
+   "rule": "同じ敵からは10秒に一度。擬態解除まで成功した時だけ。"
+  },
+  {
+   "action": "敵へ有効な一撃",
+   "xp": 3,
+   "rule": "無敵中・露見中・自陣保護中への攻撃は0。"
+  },
+  {
+   "action": "敵をHP0にする",
+   "xp": 12,
+   "rule": "同じ敵の再露見からは20秒間0。とどめ役に個人加点しない。"
+  },
+  {
+   "action": "味方を手当で復帰",
+   "xp": 10,
+   "rule": "手当が最後まで成立した時だけ。"
+  },
+  {
+   "action": "擬態で中央線を越える",
+   "xp": 8,
+   "rule": "一回の復帰につき一度。移動せず稼ぐことはできない。"
+  },
+  {
+   "action": "旗の周囲4mを確保",
+   "xp": 8,
+   "intervalSec": 3,
+   "xpText": "+8 / 3秒",
+   "rule": "生存中の人数が相手より多い時だけ。チームで一回分。"
+  }
+ ],
+ "passCriteria": [
+  "一人あたりHP0は1試合1〜3回",
+  "露見は平均6〜9秒で復帰",
+  "チームレベル差は80%以上の時間で1以内",
+  "レベル5到達は接戦の30〜50%",
+  "ダメージ由来XPは35%以下",
+  "擬態で旗へ近づく時間が追跡時間を上回る"
+ ],
+ "notes": {
+  "marks": "設計図の「印」はHP制に読み替える。『印の残り時間』＝被弾後の可視化の残り時間（守り兎・円光）／『自分の印を一つ消す』＝HP回復（身代札・印がない＝HP満タンだと使えない）",
+  "foxdash": "狐駆けの『1.5m以内で自動発見』は既定の近距離発見2.1mで満たす（上書きで狭めない）。布の揺れ＝擬態中の足音がしゃがみと同じ3mまで聞こえる",
+  "gate": "影穴：入口を置き、6秒以内に入口のそばでもう一度押すと、向いた方向・入口から5m以内（柄の上を優先）へ出口を置いて移動。出口ができてから3秒、敵が一人だけ追って入れる"
+ }
+};
+
+
 // ===== data.js（自動コピー・編集しない） =====
 // 忍彩かくれんぼ — 城旗争奪：ルール・マップ・キャラ・文言の正本
 // 単位は m・秒・ラジアン。数値はUIとシミュレーションの両方がここから読む（設計書10）。
@@ -1119,7 +2394,7 @@ const RULES = {
   shotRadius: 0.35,
   shotCooldown: 2.5,
   markDuration: 8,
-  hitInvuln: 0.8,
+  hitInvuln: 0.6,       // 被弾後の無敵（設計図：HP・レベルアップ）
   returnWait: 3,
   protect: 2,
   flagRadius: 1.0,
@@ -1133,6 +2408,8 @@ const RULES = {
   footRun: 8, footCrouch: 3, footCamo: 1.5,
   bodyRadius: 0.30,
   bodyHeight: 1.40,
+  // HP・露見・手当・成長（正本は balance.js の BALANCE.hp。ここで参照できるようにする）
+  hp: (typeof BALANCE !== "undefined" ? BALANCE : null).hp,
 };
 
 // 竹影の城（64×48）。tools/build_map.py --write で生成（左右対称）
@@ -1215,6 +2492,10 @@ const TEAMS = [
 
 // 39体の正本は chars.js（tools/build_chars.py が公式名簿から生成）。ここでは台詞と役割を足す
 const ALL = (typeof CHARS_ALL !== "undefined") ? CHARS_ALL : null;
+// 性能（能力値6軸・固有技・推奨系統）は balance.js（設計図から生成）
+const BAL = (typeof BALANCE !== "undefined") ? BALANCE : null;
+const BAL_BY_ID = Object.fromEntries(BAL.chars.map(b => [b.id, b]));
+const STAT_NAMES = [["spd", "速さ"], ["camo", "擬態"], ["atk", "攻撃"], ["def", "防御"], ["scout", "索敵"], ["esc", "逃走"]];
 const CHAR_EXTRA = {
   kohaku: {
     sword: "左腰", gameRole: "擬態の練習を案内する。面の傾きや姿勢で感情を表す",
@@ -1237,7 +2518,10 @@ const GENERIC_LINES = {
 const CHARS = ALL.map(c => Object.assign({}, c, CHAR_EXTRA[c.id] || {}, {
   lines: (CHAR_EXTRA[c.id] && CHAR_EXTRA[c.id].lines) || GENERIC_LINES,
   gameRole: (CHAR_EXTRA[c.id] && CHAR_EXTRA[c.id].gameRole) || "",
-}));
+}, BAL_BY_ID[c.id] ? { stats: BAL_BY_ID[c.id].stats, skill: BAL_BY_ID[c.id].skill, tree: BAL_BY_ID[c.id].tree, title: BAL_BY_ID[c.id].title, roleLabel: BAL_BY_ID[c.id].role, winPlan: BAL_BY_ID[c.id].winPlan, escapePlan: BAL_BY_ID[c.id].escapePlan }
+  : { stats: { spd: 3, camo: 3, atk: 3, def: 3, scout: 3, esc: 3 }, skill: null, tree: "選択", title: "", roleLabel: "", winPlan: "", escapePlan: "" }));
+const TREES = BAL.trees;
+const TREE_NAMES = BAL.treeNames;
 const charIndex = id => Math.max(0, CHARS.findIndex(c => c.id === id));
 
 const ROLES = [
@@ -1273,7 +2557,7 @@ const TUTORIAL = [
   { id: "move",  title: "① 移動", text: "左のスティックで動こう。光っている場所まで行ってみて。", goal: "指定地点へ", hint: "PCならWASDキー" },
   { id: "hide",  title: "② 擬態", text: "竹の柄の上で止まって「布」を押す。0.8秒で布が広がる。刃が通り過ぎるまで動かない。", goal: "刃に見つからずやり過ごす", hint: "動くと布が揺れて気づかれやすい" },
   { id: "scan",  title: "③ 見破り", text: "竹の柄のどこかに刃が隠れている。布の揺れを見つけたら、そちらを向いて「目」。練習では回復が早い。", goal: "見破りを当てる", hint: "前方100度・6m。壁は貫通しない" },
-  { id: "shot",  title: "④ 印投げ", text: "刃に印を2回当てると自陣に帰る。1回目の印は8秒で消えるから、消える前に2回目を。", goal: "刃を帰還させる", hint: "印は8m飛ぶ。2.5秒に1回" },
+  { id: "shot",  title: "④ 印投げ", text: "印を当てると相手のHPが減る（1発で約34）。HPが0になると12秒の「露見」＝走れず擬態も旗も使えない。3発当ててみよう。", goal: "刃を露見させる", hint: "印は8m飛ぶ。2.5秒に1回" },
   { id: "flag",  title: "⑤ 旗を掴む", text: "咲耶が敵の気を引いている。その隙に城の旗へ近づいて「旗を掴む」。", goal: "旗を掴む", hint: "旗の半径3mは擬態できない" },
 ];
 
@@ -1282,7 +2566,10 @@ const HOWTO = [
   { h: "時間", p: "競技240秒。未取得なら60秒の延長（擬態は最大8秒・見破りの回復は6秒に短縮）。それでも未取得なら引き分け。" },
   { h: "擬態", p: "竹（縦縞）・石（斑点）・木（横木目）の柄の上で止まり「布」を押すと0.8秒で布に包まれる。最大15秒、解除後6秒で再使用。柄の上を0.7m/sで忍び歩きできるが、布が揺れて気づかれやすい。柄の外へ出ると即解除。" },
   { h: "見破り", p: "前方100度・6mの扇。0.25秒後の向きで判定し、壁は貫通しない。当たった敵は3秒間、味方全員に輪郭が見える。空振りしても回復10秒。" },
-  { h: "印投げ", p: "紙の印を投げる（弾速14m/s・射程8m・回復2.5秒）。1回目で擬態解除＋発見3秒＋1秒減速。印が消える8秒以内に2回目を当てると相手は自陣へ帰還（3秒待機＋2秒保護）。撃破やポイントはない。" },
+  { h: "印投げとHP", p: "紙の印を投げる（弾速14m/s・射程8m・回復2.5秒）。当たると擬態解除＋発見3秒＋1秒減速＋HPが減る（基本34・攻撃/防御の能力値で増減）。HPは100（レベルで最大120）。被弾後0.6秒は無敵。HPが30未満だと擬態できない。撃破やポイントはない。" },
+  { h: "露見と手当", p: "HPが0になると12秒の「露見」：移動は70%、合図だけ可、擬態・攻撃・旗取得は不可で、敵からも見える。味方が1.5m以内で3秒静止すると手当で復帰（HP35）。自陣に戻るか12秒たつと自動帰還して全回復。" },
+  { h: "能力値と固有技", p: "39体それぞれに速さ・擬態・攻撃・防御・索敵・逃走（1〜5・合計21）と固有技が1つ。固有技はボタン（PCはX）で発動、回復16〜28秒。効果と対処は図鑑で確認できる。同じ技の重複は加算せず、長い残り時間だけ残る。" },
+  { h: "レベルと系統", p: "経験値はチーム共有。新しく見破る+12（擬態を解いたときだけ）、有効な一撃+3、HPを0に+12、手当で復帰+10、擬態で中央線越え+8、旗の周囲4m確保+8/3秒。80・200・360・560でLv2〜5。上がるたびに5秒以内に「影／技／護」を選ぶ（選ばないと推奨系統）。Lv5の系統には一試合一度の奥義がつく。" },
   { h: "旗のまわり", p: "半径3mの砂地では擬態できない。半径4m以内に8秒居座ると足元に位置の波紋が出る（敵味方とも同じ）。3秒離れるまで消えない。" },
   { h: "同着", p: "両チームの有効な旗取得が同じ処理tickなら「同着・両チーム優勝」。乱数やIDで片側を勝たせない。" },
   { h: "合図", p: "「こっちへ」「敵がいた」「旗へ行く」の3種。2秒に1回。自由チャットはない。" },
@@ -1298,11 +2585,14 @@ const CONTROLS = [
   ["見破り", "目ボタン（長押しで向きを指定）", "Q"],
   ["印投げ", "印ボタン（引っぱって狙う）", "クリック / Space"],
   ["旗を掴む", "範囲内で大きな「旗を掴む」", "F"],
+  ["固有技", "技ボタン", "X"],
+  ["奥義（Lv5・一度だけ）", "奥義ボタン", "Z"],
+  ["系統を選ぶ（レベルアップ時）", "画面上の3択", "1 / 2 / 3"],
   ["合図", "合図ボタン→3択", "R → 1/2/3"],
   ["ポーズ（ひとり用のみ）", "≡", "Esc"],
 ];
 
-return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS, ONLINE };
+return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, STAT_NAMES, TREES, TREE_NAMES, ROLES, PINGS, DIFFICULTY, CAMO_REASONS, TUTORIAL, HOWTO, CONTROLS, ONLINE };
 })();
 
 
@@ -1332,7 +2622,38 @@ const Sim = (() => {
     if (team === 1 && c === "B") return true;
     return false;
   }
+  // 試合中に置かれた設置物（金剛壁など）。step() の先頭で更新する
+  let DYN = [];
+  function segDist(px, py, ax, ay, bx, by) {
+    const vx = bx - ax, vy = by - ay, wx = px - ax, wy = py - ay;
+    const L = vx * vx + vy * vy; const t = L > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / L)) : 0;
+    return Math.hypot(px - (ax + vx * t), py - (ay + vy * t));
+  }
+  function segCrossCircle(ax, ay, bx, by, cx, cy, r) { return segDist(cx, cy, ax, ay, bx, by) <= r; }
+  function segsCross(ax, ay, bx, by, cx, cy, dx, dy) {
+    const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (Math.abs(d) < 1e-9) return false;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d, u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+  function dynBlocksMove(x, y, r) {
+    for (const o of DYN) if (o.kind === "wall" && !o.pending && segDist(x, y, o.ax, o.ay, o.bx, o.by) < r + 0.25) return true;
+    return false;
+  }
+  function dynBlocksLos(ax, ay, bx, by) {
+    for (const o of DYN) {
+      if (o.kind === "wall" && !o.pending && segsCross(ax, ay, bx, by, o.ax, o.ay, o.bx, o.by)) return true;
+      if ((o.kind === "zone_fog" || o.kind === "zone_dark") && Math.hypot(ax - bx, ay - by) > 1.5) {
+        // 霧・暗幕：中を通る視線は遮る（両端が霧の中で1.5m以内なら見える）
+        const inA = Math.hypot(ax - o.x, ay - o.y) <= o.r, inB = Math.hypot(bx - o.x, by - o.y) <= o.r;
+        if (o.kind === "zone_dark" && !inA && !inB) continue;      // 暗幕は外から外は遮らない（黒い球として見える）
+        if (segCrossCircle(ax, ay, bx, by, o.x, o.y, o.r)) return true;
+      }
+    }
+    return false;
+  }
   function blocked(x, y, r, team) {
+    if (DYN.length && dynBlocksMove(x, y, r)) return true;
     const x0 = Math.floor(x - r), x1 = Math.floor(x + r), y0 = Math.floor(y - r), y1 = Math.floor(y + r);
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
       if (!solidCell(cx, cy, team)) continue;
@@ -1351,11 +2672,22 @@ const Sim = (() => {
       const t = i / n;
       if (SOLID[cellAt(ax + dx * t, ay + dy * t)]) return false;
     }
+    if (DYN.length && dynBlocksLos(ax, ay, bx, by)) return false;
     return !SOLID[cellAt(bx, by)];
+  }
+  function pathClear(ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+    if (len < 1e-6) return true;
+    const n = Math.ceil(len / 0.2);
+    for (let i = 1; i <= n; i++) { const t = i / n; if (SOLID[cellAt(ax + dx * t, ay + dy * t)]) return false; }
+    for (const o of DYN) if (o.kind === "wall" && !o.pending && segsCross(ax, ay, bx, by, o.ax, o.ay, o.bx, o.by)) return false;
+    return true;
   }
   function zoneAt(x, y) {
     const c = cellAt(x, y);
-    return (c === "b" || c === "s" || c === "w") ? c : null;
+    if (c === "b" || c === "s" || c === "w") return c;
+    for (const o of DYN) if (o.kind === "paint_zone" && Math.abs(x - o.x) <= o.half && Math.abs(y - o.y) <= o.half) return o.pattern;
+    return null;
   }
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
@@ -1421,11 +2753,18 @@ const Sim = (() => {
       camo: 0, camoEnter: 0, camoTime: 0, camoCd: 0, camoPattern: null,
       reveal: 0, marks: 0, markTime: 0, invuln: 0, slow: 0,
       returning: 0, protect: 0,
+      // HP・露見・手当（設計図：HP・レベルアップ）
+      hp: R.hp.byLevel[0], hpMax: R.hp.byLevel[0], exposed: 0, healT: 0, healBy: null, exposedAt: -99, silentT: 0, stunT: 0, aimJitter: 0,
+      // 成長：レベルごとに選んだ系統 {2:"影",...}、選択待ち、奥義
+      perks: {}, pendingLevel: 0, pickT: 0, ult: { used: false, active: 0 }, firstHitCd: 0, firstHitArmed: false, crossedCenter: false, lastSide: 0, protectBonus: 0, soulBoosted: false,
+      // 固有技
+      skillCd: 0, sk: {}, mods: [],       // mods: [{k:"speed", mul:1.15, t:4}, ...]
+      bal: balanceFor(charIdx),
       scanCd: 0, scanPending: 0, shotCd: 0, pingCd: 0,
       castleTime: 0, awayTime: 0, pulse: false,
       lastSeen: null,           // 味方が共有する「最後に見た場所」{x,y,t}
-      input: { x: 0, y: 0, actions: [], angle: null }, connected: true, netSeq: 0,
-      stats: { hides: 0, hideTime: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0, marked: 0 },
+      input: { x: 0, y: 0, actions: [], angle: null }, connected: opts.connected !== false, netSeq: 0,
+      stats: { hides: 0, hideTime: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0, marked: 0, damage: 0, taken: 0, hp0: 0, heals: 0, skills: 0, xp: 0 },
       // Bot用
       ai: { think: 0, wp: 0, phase: "route", suspect: null, seen: 0, goAt: 0, lastPing: -99, lastPingKind: "", waitT: 0, scanned: false, post: null, postT: 0, patience: 40, lastContact: -99, minClaim: 30, stepOut: false, hz: "attack", hzT: 0, quietT: 0, shotAt: -99 },
       controller: null,         // 練習用の台本Bot
@@ -1433,8 +2772,22 @@ const Sim = (() => {
     };
   }
 
+  // 能力値（1〜5・3が共通値）→ 係数。設計図「能力3を現行共通値とする」
+  function balanceFor(charIdx) {
+    const c = D.CHARS[Math.max(0, Math.min(D.CHARS.length - 1, charIdx | 0))];
+    const st = (c && c.stats) || { spd: 3, camo: 3, atk: 3, def: 3, scout: 3, esc: 3 };
+    const k = v => (v | 0) - 3;
+    return {
+      stats: st, skill: c && c.skill ? c.skill : null, tree: (c && c.tree) || "選択",
+      speedMul: 1 + k(st.spd) * 0.06, camoDurMul: 1 + k(st.camo) * 0.10, camoEnterMul: 1 - k(st.camo) * 0.08, camoSpeedMul: 1 + k(st.camo) * 0.10,
+      dmg: R.hp.baseDamage * (1 + k(st.atk) * 0.12), takenMul: 1 - k(st.def) * 0.08,
+      scanRangeAdd: k(st.scout) * 0.5, scanCdMul: 1 - k(st.scout) * 0.06,
+      slowFactor: R.slowFactor + k(st.esc) * 0.06, exposeMove: R.hp.exposeMove + k(st.esc) * 0.04,
+    };
+  }
   function createMatch(opts) {
     const g = {
+      xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [], serial2: 0,
       phase: "briefing", timer: opts.briefing === false ? 0 : R.briefing,
       time: R.duration, elapsed: 0, tick: 0, overtime: false,
       seed: (opts.seed | 0) || 20260922,
@@ -1451,7 +2804,8 @@ const Sim = (() => {
   // 難易度ごとの初期値（手ごわい＝早く取りに行く・ルートも役割どおりとは限らない）
   function assignAi(g, p) {
     const dif = g.difficulty;
-    p.ai.minClaim = dif.aggro ? 18 + rng(g) * 15 : 35 + rng(g) * 30;
+    // HP制（3発で露見）になって守りが弱まったぶん、最短取得を設計書の目安（初回45〜90秒）へ寄せる。手ごわいは従来どおり速い
+    p.ai.minClaim = dif.aggro ? 18 + rng(g) * 15 : dif.name === "やさしい" ? 60 + rng(g) * 40 : 45 + rng(g) * 35;
     p.ai.routeOverride = null;
     if (dif.aggro && p.bot && rng(g) < 0.5) {
       const routes = Object.keys(D.MAP.routes);
@@ -1459,9 +2813,11 @@ const Sim = (() => {
     }
   }
   function resetForRematch(g, swapTeams) {
-    const players = g.players.map(p => makePlayer(p.id, swapTeams ? 1 - p.team : p.team, p.char, { slot: p.slot, name: p.name, bot: p.bot, role: p.role }));
+    const players = g.players.map(p => makePlayer(p.id, swapTeams ? 1 - p.team : p.team, p.char, { slot: p.slot, name: p.name, bot: p.bot, role: p.role, connected: p.connected }));
     Object.assign(g, { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false,
-      shots: [], effects: [], log: [], winner: [], claimants: [], reason: "", claimTick: -1, flag: "available" });
+      shots: [], effects: [], log: [], winner: [], claimants: [], reason: "", claimTick: -1, flag: "available",
+      xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [] });
+    DYN = g.dyn;
     g.players = players;
     for (const p of g.players) assignAi(g, p);
     return g;
@@ -1478,7 +2834,8 @@ const Sim = (() => {
   }
 
   // ---------- 入力 ----------
-  const ACTIONS = ["camo", "scan", "shot", "claim", "ping", "crouch"];
+  const ACTIONS = ["camo", "scan", "shot", "claim", "ping", "crouch", "skill", "ult"];
+  const ACT_OK = a => ACTIONS.includes(a) || (typeof a === "string" && (a.startsWith("ping:") || a.startsWith("tree:") || a.startsWith("skill:")));
   function setInput(p, i) {
     if (!i || typeof i !== "object") return;
     const n = v => Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0;
@@ -1487,7 +2844,7 @@ const Sim = (() => {
     if (len > 1) { x /= len; y /= len; }
     p.input = {
       x, y,
-      actions: Array.isArray(i.actions) ? i.actions.filter(a => ACTIONS.includes(a) || (typeof a === "string" && a.startsWith("ping:"))).slice(0, 6) : [],
+      actions: Array.isArray(i.actions) ? i.actions.filter(ACT_OK).slice(0, 8) : [],
       angle: Number.isFinite(i.angle) ? i.angle : null,
     };
   }
@@ -1510,17 +2867,25 @@ const Sim = (() => {
     p.x = s.x; p.y = s.y; p.px = s.x; p.py = s.y;
     p.returning = R.returnWait; p.marks = 0; p.markTime = 0; p.reveal = 0; p.slow = 0;
     p.castleTime = 0; p.awayTime = 0; p.pulse = false; p.scanPending = 0;
+    p.hp = p.hpMax; p.exposed = 0; p.healT = 0; p.healBy = null; p.crossedCenter = false; p.stunT = 0; p.aimJitter = 0; p.silentT = 0;
+    p.mods = []; p.sk = {}; p.firstHitArmed = false;
     p.ai.wp = 0; p.ai.phase = "route"; p.ai.retreat = 0;
     p.stats.returns++;
     logEvent(g, "return", { id: p.id, team: p.team });
   }
 
   // 可視判定（同じ関数を人間の描画とBotの両方が使う）
+  function inZone(kind, x, y, team) {
+    for (const o of DYN) if (o.kind === kind && (team == null || o.team === team) && Math.hypot(x - o.x, y - o.y) <= o.r) return o;
+    return null;
+  }
   function canSee(p, q) {
     if (q.returning > 0) return false;
     const d = dist(p, q);
     if (d > R.viewRange) return false;
+    if (q.exposed > 0 && d <= R.viewRange && lineClear(p.x, p.y, q.x, q.y)) return true;
     if (!lineClear(p.x, p.y, q.x, q.y)) return false;
+    if (p.team !== q.team && d > 1.2 && (inZone("zone_dark", q.x, q.y) || inZone("zone_dark", p.x, p.y))) return false;
     if (q.camo === 2 && q.reveal <= 0 && d >= R.closeSee) return false;
     return true;
   }
@@ -1530,8 +2895,18 @@ const Sim = (() => {
   }
   // 足音が聞こえるか（壁があれば半減）
   function audible(listener, src) {
-    if (src.returning > 0 || src.speedNow < 0.1) return false;
-    let r = src.camo === 2 ? R.footCamo : src.crouch ? R.footCrouch : R.footRun;
+    if (src.returning > 0) return false;
+    const hearMul = (listener.sk && listener.sk.channel && listener.sk.channel.kind === "hawk_eye") ? 0.5 : 1;   // 鷹の目：本体は音も聞こえにくい
+    if (listener.team !== src.team && src.sk && src.sk.channel && src.sk.channel.kind === "tempo") {   // 疾拍子：演奏音は10m届く
+      let r = 10 * hearMul; if (!lineClear(listener.x, listener.y, src.x, src.y)) r *= 0.5;
+      return dist(listener, src) <= r;
+    }
+    if (src.speedNow < 0.1) return false;
+    if (src.silentT > 0 || inZone("zone_water", src.x, src.y, src.team)) return false;
+    // 紫煙から出た直後は足跡が残る（視程内の敵には方向が伝わる）
+    if (listener.team !== src.team && modHas(src, "fogTrail") && dist(listener, src) <= R.viewRange) return true;
+    let r = src.camo === 2 ? (modHas(src, "foxdash") ? R.footCrouch : R.footCamo) : src.crouch ? R.footCrouch : R.footRun;   // 狐駆け：布の揺れが大きい
+    r *= hearMul;
     if (!lineClear(listener.x, listener.y, src.x, src.y)) r *= 0.5;
     return dist(listener, src) <= r;
   }
@@ -1587,6 +2962,37 @@ const Sim = (() => {
     if (dist(p, q) < 2.5) return true;
     return Math.abs(angDiff(Math.atan2(q.y - p.y, q.x - p.x), p.angle)) <= BOT_FOV / 2;
   }
+  // 擬態したまま旗の方向へ柄が続いているか（狐駆け・影渡りの使いどころ）
+  function zoneTowardFlag(g, p) { const mv = steer(g, p, FLAG); return !!zoneAt(p.x + mv.x * 1.0, p.y + mv.y * 1.0); }
+  // Botの固有技の使いどころ（型ごと）
+  function botSkill(g, p, enemies, mates, seen, flagD) {
+    const acts = [];
+    if (p.ult && !p.ult.used && p.perks[5]) {
+      const t = p.perks[5];
+      if (t === "影" && p.camo === 2 && flagD > 3 && flagD < 14 && zoneTowardFlag(g, p)) acts.push("ult");
+      if (t === "技" && p.skillCd > 5) acts.push("ult");
+      if (t === "護" && mates.some(m => dist(m, p) <= 4 && m.reveal > 0)) acts.push("ult");
+    }
+    const sk = p.bal.skill;
+    if (sk && sk.kind === "shadow_gate" && g.objects.some(o => o.kind === "gate" && o.owner === p.id && !o.exit && !o.dead && dist(p, o) <= 1.2)) { acts.push("skill"); return acts; }   // 出口を置いて渡る
+    if (!sk || p.skillCd > 0 || p.sk.channel || p.protect > 0) return acts;
+    const k = sk.kind, enemyNear = seen[0], dNear = enemyNear ? dist(p, enemyNear) : 99;
+    const hurtMate = mates.find(m => m.returning <= 0 && (m.reveal > 0 || m.hp < m.hpMax * 0.6) && dist(m, p) <= 8);
+    const attackKinds = ["trail_reveal", "freeze_bomb", "bomb", "dash", "snipe", "leap", "smash", "hex", "poison_mark", "fox_fires", "berserk", "sacrifice"];
+    const defenseKinds = ["wall", "zone_water", "zone_fog", "zone_dark", "zone_null", "parry", "counter_stance", "decoy_run", "decoy_static", "echo_clone", "substitution"];
+    const supportKinds = ["ally_shield", "cleanse", "soul_return", "thread", "tempo"];
+    const reconKinds = ["track_nearest", "hawk_eye", "snake", "thorns", "arrows", "cat_choice"];
+    const moveKinds = ["tailwind", "paint_zone", "shadow_gate"];
+    if (attackKinds.includes(k) && enemyNear && dNear <= 7) acts.push("skill");
+    else if (defenseKinds.includes(k) && enemyNear && dNear <= 6) acts.push("skill");
+    else if (k === "soul_return") { if (mates.some(m => m.returning > 0 && !m.soulBoosted)) acts.push("skill"); }
+    else if (supportKinds.includes(k) && hurtMate) acts.push("skill");
+    else if (k === "zone_petals") { const m = mates.find(m => m.camo === 0 && m.exposed <= 0 && m.returning <= 0 && m.speedNow < 0.5 && zoneAt(m.x, m.y) && dist(m, p) <= 4 && dist(m, p) > 0.5); if (m) { p.ai.faceAngle = Math.atan2(m.y - p.y, m.x - p.x); acts.push("skill"); } }
+    else if (k === "fox_dash") { if (p.camo === 2 && flagD < 20 && flagD > 4 && zoneTowardFlag(g, p)) acts.push("skill"); }
+    else if (reconKinds.includes(k) && (p.ai.phase === "guard" || p.ai.phase === "wait" || p.ai.phase === "harass") && !enemyNear && rng(g) < 0.02) acts.push("skill");
+    else if (moveKinds.includes(k) && p.ai.phase === "go" && flagD < 14 && flagD > 3) acts.push("skill");
+    return acts;
+  }
   function botThink(g, p) {
     const ai = p.ai, dif = g.difficulty;
     ai.think -= TICK;
@@ -1594,7 +3000,7 @@ const Sim = (() => {
     const interval = 0.15 + rng(g) * 0.12;
     ai.think = interval;
     const actions = [];
-    const enemies = g.players.filter(q => q.team !== p.team);
+    const enemies = g.players.filter(q => q.team !== p.team && q.exposed <= 0);   // 露見中の敵は印が当たらず旗も掴めない
     const mates = g.players.filter(q => q.team === p.team && q !== p);
     const flagD = dist(p, FLAG);
     const late = g.overtime || g.elapsed > 120;
@@ -1617,13 +3023,37 @@ const Sim = (() => {
     // 旗に迫る敵（見えている／発見中）
     const approaching = q => { const vx = (q.x - q.px) / TICK, vy = (q.y - q.py) / TICK; const d = dist(q, FLAG); return d > 0.1 && ((FLAG.x - q.x) * vx + (FLAG.y - q.y) * vy) / d > 1.0; };
     const alertR = alertRadius(dif);
-    const intruder = enemies.filter(q => q.returning <= 0 && dist(q, FLAG) < alertR && (botSees(p, q) || q.reveal > 0) && (approaching(q) || dist(q, FLAG) < flagD - 0.3)).sort((a, b) => dist(a, FLAG) - dist(b, FLAG))[0] || null;
+    // 競り合い：旗へ「向かって来ている」敵だけを侵入者とみなす（陽動役が旗の近くをうろつくだけでは反応しない。HP制で守りが弱まったぶん早取りを抑える）
+    const intruder = enemies.filter(q => q.returning <= 0 && dist(q, FLAG) < alertR && (botSees(p, q) || q.reveal > 0) && (approaching(q) && (dist(q, FLAG) < flagD + 1.5 || dist(q, FLAG) < alertR * 0.6))).sort((a, b) => dist(a, FLAG) - dist(b, FLAG))[0] || null;
     const contest = !!intruder && flagD <= dist(intruder, FLAG) + 2.5;
     const quiet2 = ai.lastContact + 2 < g.elapsed && !ai.suspect && !enemies.some(q => q.returning <= 0 && dist(q, FLAG) < 12 && audible(p, q));
     const opportunity = quiet2 && g.elapsed > ai.minClaim;
 
-    // ---- 旗を掴めるなら最優先 ----
+    // ---- 露見中：近くに味方がいれば待つ、いなければ自陣へ ----
+    if (p.exposed > 0) {
+      const mate = mates.find(m => m.returning <= 0 && m.exposed <= 0 && dist(m, p) < 8);
+      if (mate && dist(mate, p) < 2.5) { setInput(p, { x: 0, y: 0, actions: [] }); return; }
+      const home = spawnPos(p); const mv = steer(g, p, home); setInput(p, { x: mv.x, y: mv.y, actions: [] }); return;
+    }
+    // ---- 旗を掴めるなら最優先（手当より先）----
     if (flagD <= R.flagRadius && p.camo === 0 && p.protect <= 0) { setInput(p, { x: 0, y: 0, actions: ["claim"] }); return; }
+    // ---- 動くと解ける構え（鷹の目・狙撃・疾拍子）の間は止まる。近くに敵が迫ったら構えを捨てて動く ----
+    if (p.sk.channel && p.sk.channel.cancelOnMove) {
+      const th = seen[0];
+      if (!(th && dist(p, th) < 4 && p.sk.channel.kind !== "snipe")) { setInput(p, { x: 0, y: 0, actions: [], angle: th ? Math.atan2(th.y - p.y, th.x - p.x) : null }); return; }
+    }
+    // ---- 味方の手当（敵が見えていなければ寄って静止する）----
+    const wounded = mates.find(m => m.exposed > 0 && m.returning <= 0 && dist(m, p) < 10);
+    if (wounded && !enemies.some(q => q.returning <= 0 && botSees(p, q))) {
+      if (dist(p, wounded) <= 1.2) { setInput(p, { x: 0, y: 0, actions: [] }); return; }
+      const mv = steer(g, p, wounded); setInput(p, { x: mv.x, y: mv.y, actions: [] }); return;
+    }
+    // ---- 固有技・奥義（状況で使う）----
+    const skillActs = botSkill(g, p, enemies, mates, seen, flagD);
+    if (skillActs.includes("skill") && p.ai.faceAngle != null) { const fa = p.ai.faceAngle; p.ai.faceAngle = null; setInput(p, { x: 0, y: 0, actions: skillActs, angle: fa }); return; }   // 花隠れ：味方のほうを向いて置く
+    // ---- 旗を掴めるなら最優先 ----
+    if (flagD <= R.flagRadius && p.camo === 0 && p.protect <= 0) { setInput(p, { x: 0, y: 0, actions: ["claim"].concat(skillActs) }); return; }
+    if (skillActs.length) actions.push(...skillActs);
     // ---- 布を広げている最中は動かない ----
     if (p.camo === 1) { setInput(p, { x: 0, y: 0, actions: [] }); return; }
 
@@ -1631,11 +3061,16 @@ const Sim = (() => {
     if (p.camo === 2) {
       const threat = enemies.some(q => q.returning <= 0 && dist(p, q) < 11 && (lineClear(p.x, p.y, q.x, q.y) || audible(p, q)));
       const tooClose = enemies.some(q => q.returning <= 0 && dist(p, q) < 1.6);
+      const fast = modHas(p, "camoFast") || (p.ult.active > 0 && p.perks[5] === "影");
+      if (fast && !tooClose && flagD > R.flagNoCamo + 0.5) {
+        const mv = steer(g, p, FLAG);
+        if (zoneAt(p.x + mv.x * 0.6, p.y + mv.y * 0.6)) { setInput(p, { x: mv.x, y: mv.y, actions: [] }); return; }
+      }
       if (threat && !tooClose) ai.waitT = 0; else ai.waitT += interval;
       let leave = p.camoTime < 1.0 || tooClose || late;
       let go = late;
       if (ai.phase === "wait") {
-        const minT = dif.aggro ? 12 : 30;
+        const minT = dif.aggro ? 12 : 40;
         const engaged = g.elapsed > minT && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
         go = go || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > minT && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
         if (go && !threat) leave = true;
@@ -1673,7 +3108,7 @@ const Sim = (() => {
     }
     if (ai.phase === "wait") {
       // 待ち伏せ（擬態が切れても持ち場で再擬態しながら待つ）
-      const minT = dif.aggro ? 12 : 30;
+      const minT = dif.aggro ? 12 : 40;
       const engaged = g.elapsed > minT && mates.some(m => m.returning <= 0 && m.ai.lastContact > g.elapsed - 2 && dist(m, FLAG) < 16);
       const go = late || engaged || g.elapsed >= ai.goAt || opportunity || (g.elapsed > minT && !!mates.find(m => m.ai.lastPing > g.elapsed - 3 && m.ai.lastPingKind === "flag"));
       if (go) ai.phase = "go";
@@ -1774,8 +3209,11 @@ const Sim = (() => {
   }
 
   // ---------- 1tick ----------
+  const DYN_KINDS = { wall: 1, zone_fog: 1, zone_dark: 1, zone_water: 1, paint_zone: 1, zone_null: 1, zone_petals: 1 };
+  function bindDyn(g) { DYN = (g && g.dyn) || []; }
   function step(g) {
     const dt = TICK;
+    bindDyn(g);
     if (g.phase === "finished") return;
     g.tick++;
     for (const e of g.effects) e.life -= dt;
@@ -1788,17 +3226,53 @@ const Sim = (() => {
     g.elapsed += dt;
     if (!g.noTimer) g.time -= dt;
     const claims = [];
+    stepObjects(g, dt);
+    g.dyn = g.objects.filter(o => DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending));   // 予告中の金剛壁はまだ実体がない
+    DYN = g.dyn;
+    // 旗の周囲4mの確保（生存人数で上回っている側に +8/3秒・チームで1回分）
+    for (const t of [0, 1]) {
+      const alive = tm => g.players.filter(q => q.team === tm && q.returning <= 0 && q.exposed <= 0).length;
+      const near = g.players.some(q => q.team === t && q.returning <= 0 && q.exposed <= 0 && dist(q, FLAG) <= R.pulseRadius);
+      if (near && alive(t) > alive(1 - t)) { g.holdT[t] += dt; if (g.holdT[t] >= 3) { g.holdT[t] -= 3; addXp(g, t, R.hp.xp.hold, "hold"); } }
+      else g.holdT[t] = 0;
+    }
 
     // 処理順で後のチームが有利にならないよう、tickごとに順番を反転する
     const order = g.tick % 2 ? g.players.slice().reverse() : g.players;
     for (const p of order) {
-      for (const k of ["protect", "markTime", "invuln", "reveal", "slow", "camoCd", "scanCd", "shotCd", "pingCd"]) p[k] = Math.max(0, p[k] - dt);
+      for (const k of ["protect", "markTime", "invuln", "reveal", "slow", "camoCd", "scanCd", "shotCd", "pingCd", "skillCd", "silentT", "stunT", "aimJitter", "firstHitCd"]) p[k] = Math.max(0, p[k] - dt);
       if (p.markTime <= 0) p.marks = 0;
+      for (const m of p.mods) m.t -= dt;
+      if (p.mods.some(m => m.t <= 0)) { for (const m of p.mods) if (m.t <= 0 && m.onEnd) m.onEnd(g, p); p.mods = p.mods.filter(m => m.t > 0); }
+      if (p.ult.active > 0) p.ult.active = Math.max(0, p.ult.active - dt);
+      if (p.pendingLevel) { p.pickT -= dt; if (p.pickT <= 0 || p.bot) choosePerk(g, p, null); }
+      // 護Lv3 最初の一印：満タンのときだけ構える（減ったら外す）
+      p.firstHitArmed = hasPerk(p, "護", 3) && p.hp >= p.hpMax && p.firstHitCd <= 0;
+      // 固有技の待機（守り兎8秒・変わり身・追香）は時間で切れる
+      for (const k2 of ["shield", "kawarimi", "poisonArmed"]) if (p.sk[k2] > 0) p.sk[k2] = Math.max(0, p.sk[k2] - dt);
+      // 逢魔刻：自身が常に可視化される（位置が明確）
+      if (modHas(p, "visible")) p.reveal = Math.max(p.reveal, 0.15);
+      // 露見：12秒で自動帰還。自陣に入れば即復帰（敵からは射線内で見える＝canSee）
+      if (p.exposed > 0) {
+        p.exposed = Math.max(0, p.exposed - dt);
+        if (p.camo) unhide(g, p, true);
+        if (inSpawn(p)) { recover(g, p, p.hpMax, "home"); }
+        else if (p.exposed <= 0) { returnHome(g, p); }
+      }
+      // 手当：味方が1.5m以内で静止していると進む
+      if (p.exposed > 0 && p.returning <= 0) {
+        const healer = g.players.find(h => h !== p && h.team === p.team && h.returning <= 0 && h.exposed <= 0 && h.speedNow < 0.6 && dist(h, p) <= R.hp.healRange);
+        if (healer) {
+          const need = hasPerk(healer, "護", 4) ? R.hp.healSecFast : R.hp.healSec;
+          p.healT += dt; p.healBy = healer.id;
+          if (p.healT >= need) { recover(g, p, hasPerk(healer, "護", 4) ? R.hp.healHpFast : R.hp.healHp, "heal"); healer.stats.heals++; addXp(g, p.team, R.hp.xp.heal, "heal"); logEvent(g, "healed", { id: p.id, by: healer.id, team: p.team }); }
+        } else { p.healT = Math.max(0, p.healT - dt * 2); p.healBy = null; }
+      }
       if (p.lastSeen) { p.lastSeen.t -= dt; if (p.lastSeen.t <= 0) p.lastSeen = null; }
       if (p.reveal > 0) p.lastSeen = { x: p.x, y: p.y, t: R.lastSeen + 0.001 };
       if (p.returning > 0) {
         p.returning = Math.max(0, p.returning - dt);
-        if (p.returning <= 0) p.protect = R.protect;
+        if (p.returning <= 0) { p.protect = R.protect + (p.protectBonus || 0); p.protectBonus = 0; p.soulBoosted = false; }
         p.input.actions = []; p.speedNow = 0;
         continue;
       }
@@ -1808,9 +3282,22 @@ const Sim = (() => {
       const i = p.input;
       const acts = new Set(i.actions);
       i.actions = [];
-      const moving = Math.hypot(i.x, i.y) > 0.1;
+      // 成長：系統の選択
+      for (const a of acts) if (a.startsWith("tree:") && p.pendingLevel) choosePerk(g, p, a.slice(5));
+      if (p.exposed > 0 || p.stunT > 0) { for (const a of [...acts]) if (["camo", "scan", "shot", "claim", "skill", "ult", "crouch"].includes(a) || a.startsWith("skill:")) acts.delete(a); }
+      if (p.stunT > 0 || (p.sk.channel && p.sk.channel.freeze)) { i.x = 0; i.y = 0; }
+      let moving = Math.hypot(i.x, i.y) > 0.1;
+      if (moving && p.sk.channel && p.sk.channel.cancelOnMove) { p.sk.channel = null; emit(g, "channel_cancel", p.x, p.y, { team: p.team, life: 0.4 }); }   // 鷹の目・狙撃・疾拍子は動けば解ける
       if (i.angle != null) p.angle = i.angle;
       else if (moving) p.angle = Math.atan2(i.y, i.x);
+      const B = balNow(p);
+      {
+        const tw = p.mods.find(m => m.k === "tailwind");
+        if (tw && moving && Math.abs(angDiff(Math.atan2(i.y, i.x), tw.dir)) > Math.PI / 4) {
+          p.mods = p.mods.filter(m => m.src !== "tailwindSpeed" && m.k !== "tailwind");   // 曲がると加速が落ちる
+          emit(g, "wind_end", p.x, p.y, { team: p.team, life: 0.4 });
+        }
+      }
 
       if (acts.has("crouch")) p.crouch = !p.crouch;
 
@@ -1819,8 +3306,13 @@ const Sim = (() => {
         if (p.camo) unhide(g, p);
         else {
           const z = zoneAt(p.x, p.y);
-          if (p.protect <= 0 && p.camoCd <= 0 && p.reveal <= 0 && z && !moving && dist(p, FLAG) > R.flagNoCamo) {
-            p.camo = 1; p.camoEnter = R.camoEnter; p.camoPattern = z;
+          if (p.protect <= 0 && p.camoCd <= 0 && p.reveal <= 0 && z && !moving && dist(p, FLAG) > R.flagNoCamo && p.hp >= R.hp.minCamoHp && !(p.sk.channel) && !modHas(p, "noCamo")) {
+            const petals = inZone("zone_petals", p.x, p.y, p.team);
+            let enter = R.camoEnter * B.camoEnterMul - (hasPerk(p, "影", 4) ? 0.1 : 0) - (petals ? (petals.faster || 0.4) : 0);
+            p.camo = 1; p.camoEnter = Math.max(0.2, enter); p.camoPattern = z;
+            // 擬態開始痕（白蛇が拾う）
+            g.camoMarks.push({ x: p.x, y: p.y, team: p.team, id: p.id, t: g.elapsed });
+            if (g.camoMarks.length > 60) g.camoMarks.shift();
           }
         }
       }
@@ -1829,7 +3321,7 @@ const Sim = (() => {
         else {
           p.camoEnter -= dt;
           if (p.camoEnter <= 0) {
-            p.camo = 2; p.camoEnter = 0; p.camoTime = g.overtime ? R.camoOvertime : R.camoDuration;
+            p.camo = 2; p.camoEnter = 0; p.camoTime = (g.overtime ? R.camoOvertime : R.camoDuration) * B.camoDurMul + (hasPerk(p, "影", 4) ? 3 : 0);
             p.stats.hides++;
             emit(g, "hide", p.x, p.y, { team: p.team });
           }
@@ -1841,13 +3333,25 @@ const Sim = (() => {
       }
 
       // 移動
-      const base = p.camo === 2 ? R.camoSpeed : p.crouch ? R.crouchSpeed : R.speed;
-      const speed = base * (p.slow > 0 ? R.slowFactor : 1) * (p.bot && !p.controller && g.difficulty.speedMul ? g.difficulty.speedMul : 1);
+      let base = p.camo === 2 ? R.camoSpeed * B.camoSpeedMul : p.crouch ? R.crouchSpeed * p.bal.speedMul * (hasPerk(p, "影", 2) ? 1.1 : 1) : R.speed * p.bal.speedMul;
+      if (p.camo === 2 && (modHas(p, "camoFast") || (p.ult.active > 0 && p.perks[5] === "影"))) base = R.speed * 0.7;
+      const difMul = p.bot && !p.controller && g.difficulty.speedMul ? g.difficulty.speedMul : 1;
+      let speed = base * (p.slow > 0 ? p.bal.slowFactor : 1) * difMul * modMul(p, "speed");
+      if (p.exposed > 0) speed = R.speed * p.bal.speedMul * p.bal.exposeMove * difMul;   // 露見：本人の速さの70%（逃走で±）
+      if (p.sk.channel && p.sk.channel.speedMul != null) speed *= p.sk.channel.speedMul;
+      if (DYN.some(o => o.kind === "zone_null" && o.owner === p.id && Math.hypot(p.x - o.x, p.y - o.y) <= o.r)) speed *= 0.7;   // 罪業：本人も遅くなる
       const nx = p.x + i.x * speed * dt, ny = p.y + i.y * speed * dt;
       if (!blocked(nx, p.y, R.bodyRadius, p.team)) p.x = nx;
       if (!blocked(p.x, ny, R.bodyRadius, p.team)) p.y = ny;
       p.speedNow = Math.hypot(p.x - p.px, p.y - p.py) / dt;
       if (p.camo === 2 && !zoneAt(p.x, p.y)) unhide(g, p);
+      {
+        const side = p.x < FLAG.x ? 0 : 1, enemySide = 1 - p.team;
+        if (p.camo === 2 && !p.crossedCenter && p.lastSide === p.team && side === enemySide) { p.crossedCenter = true; addXp(g, p.team, R.hp.xp.cross, "cross"); }
+        p.lastSide = side;
+      }
+      // 設置物との接触（狐火・棘道・矢印・影穴の入口）
+      touchObjects(g, p);
 
       // 旗まわりの波紋
       const fd = dist(p, FLAG);
@@ -1857,7 +3361,7 @@ const Sim = (() => {
       // 見破り（0.25秒後に判定）
       if (acts.has("scan") && p.scanCd <= 0 && p.protect <= 0 && p.scanPending <= 0) {
         unhide(g, p);
-        p.scanCd = g.practice ? R.scanPractice : g.overtime ? R.scanOvertime : R.scanCooldown;
+        p.scanCd = (g.practice ? R.scanPractice : g.overtime ? R.scanOvertime : R.scanCooldown) * B.scanCdMul;
         p.scanPending = R.scanDelay;
         emit(g, "scan_pre", p.x, p.y, { team: p.team, life: R.scanDelay });
       }
@@ -1867,14 +3371,27 @@ const Sim = (() => {
           p.scanPending = 0;
           emit(g, "scan", p.x, p.y, { team: p.team, angle: p.angle, owner: p.id });
           let hit = 0;
+          const range = R.scanRange + B.scanRangeAdd + (hasPerk(p, "技", 3) ? 0.5 : 0);
           for (const q of g.players) {
             if (q.team === p.team || q.returning > 0 || q.protect > 0) continue;
-            if (dist(p, q) > R.scanRange || !lineClear(p.x, p.y, q.x, q.y)) continue;
+            if (dist(p, q) > range || !lineClear(p.x, p.y, q.x, q.y)) continue;
             const da = angDiff(Math.atan2(q.y - p.y, q.x - p.x), p.angle);
             if (Math.abs(da) <= R.scanAngle / 2) {
-              q.reveal = R.revealDuration; unhide(g, q); hit++; p.stats.reveals++;
+              const wasHidden = q.camo === 2;
+              setReveal(q, R.revealDuration, true); unhide(g, q); hit++; p.stats.reveals++;
               emit(g, "found", q.x, q.y, { team: p.team, target: q.id });
               logEvent(g, "found", { by: p.id, id: q.id, team: p.team });
+              const key = p.team + ":" + q.id;
+              if (wasHidden && !(g.revealXp[key] > g.elapsed - 10)) { g.revealXp[key] = g.elapsed; addXp(g, p.team, R.hp.xp.reveal, "reveal"); }
+            }
+          }
+          // 分身・描景・暗幕も見破りに反応する
+          for (const o of g.objects) {
+            if (o.team === p.team || o.dead) continue;
+            if (o.kind === "zone_dark" && dist(p, o) <= range + o.r && (dist(p, o) <= o.r || Math.abs(angDiff(Math.atan2(o.y - p.y, o.x - p.x), p.angle)) <= R.scanAngle / 2)) { o.life = Math.max(0.05, o.life - 1); hit++; continue; }   // 漆黒：見破りで1秒短縮
+            if ((o.kind === "decoy_static" || o.kind === "decoy_run" || o.kind === "paint_zone") && dist(p, o) <= range && lineClear(p.x, p.y, o.x, o.y) && Math.abs(angDiff(Math.atan2(o.y - p.y, o.x - p.x), p.angle)) <= R.scanAngle / 2) {
+              if (o.kind === "paint_zone") o.life = Math.min(o.life, 2); else { o.dead = true; emit(g, "found", o.x, o.y, { team: p.team, decoy: true }); }
+              hit++;
             }
           }
           if (!hit) emit(g, "miss", p.x, p.y, { team: p.team, owner: p.id });
@@ -1882,12 +3399,28 @@ const Sim = (() => {
       }
 
       // 印投げ
-      if (acts.has("shot") && p.shotCd <= 0 && p.protect <= 0) {
+      if (acts.has("shot") && p.shotCd <= 0 && p.protect <= 0 && !(p.sk.channel && p.sk.channel.noShot)) {
         unhide(g, p);
-        p.shotCd = R.shotCooldown;
-        g.shots.push({ id: ++g.serial, owner: p.id, team: p.team, x: p.x, y: p.y, dx: Math.cos(p.angle), dy: Math.sin(p.angle), travel: 0, angle: p.angle });
-        emit(g, "throw", p.x, p.y, { team: p.team, life: 0.3 });
+        p.shotCd = Math.max(0.6, (R.shotCooldown - (hasPerk(p, "技", 2) ? 0.15 : 0)) * modMul(p, "shotCd"));
+        let ang = p.angle;
+        if (p.aimJitter > 0) ang += (rng(g) - 0.5) * 0.8;
+        // 無刀取り：正面2m以内で構えている敵がいれば無効化して止める
+        const counter = g.players.find(q => q.team !== p.team && q.sk.channel && q.sk.channel.kind === "counter_stance" && dist(p, q) <= q.sk.channel.reach && Math.abs(angDiff(Math.atan2(p.y - q.y, p.x - q.x), q.angle)) <= 0.9);
+        // 花隠れ：範囲内の味方が攻撃すると恩恵は即終了
+        for (const o of g.objects) if (o.kind === "zone_petals" && o.team === p.team && !o.dead && dist(p, o) <= o.r) { o.dead = true; emit(g, "petals_end", o.x, o.y, { team: o.team, life: 0.5 }); }
+        if (counter) { p.stunT = counter.sk.channel.stun; emit(g, "parry", p.x, p.y, { team: counter.team, life: 0.6 }); logEvent(g, "countered", { by: counter.id, id: p.id, team: counter.team }); }
+        else {
+          const poison = p.sk.poisonArmed > 0;   // 当たったときに消費する
+          g.shots.push({ id: ++g.serial, owner: p.id, team: p.team, x: p.x, y: p.y, dx: Math.cos(ang), dy: Math.sin(ang), travel: 0, angle: ang, poison, speed: R.shotSpeed, range: R.shotRange });
+          emit(g, "throw", p.x, p.y, { team: p.team, life: 0.3 });
+        }
       }
+      // 固有技・奥義
+      for (const a of acts) {
+        if (a === "skill" || a.startsWith("skill:")) useSkill(g, p, a.startsWith("skill:") ? a.slice(6) : null);
+        if (a === "ult") useUlt(g, p);
+      }
+      stepChannel(g, p, dt, acts);
       // 合図
       for (const a of acts) {
         if (a.startsWith("ping") && p.pingCd <= 0) {
@@ -1904,24 +3437,23 @@ const Sim = (() => {
     // 印の弾道（連続衝突）
     const alive = [];
     for (const s of g.shots) {
-      const travel = R.shotSpeed * dt, n = Math.ceil(travel / 0.15);
+      let sp = s.speed || R.shotSpeed;
+      { const w = inZone("zone_water", s.x, s.y, 1 - s.team); if (w) sp *= 1 - (w.projSlow != null ? w.projSlow : 0.2); }   // 水鏡：敵の飛び道具が遅くなる
+      const travel = sp * dt, n = Math.ceil(travel / 0.15);
       let dead = false;
       for (let j = 0; j < n && !dead; j++) {
+        const ox = s.x, oy = s.y;
         s.x += s.dx * travel / n; s.y += s.dy * travel / n; s.travel += travel / n;
-        if (SOLID[cellAt(s.x, s.y)] || s.travel > R.shotRange) { dead = true; emit(g, "shot_end", s.x, s.y, { life: 0.3 }); break; }
-        const q = g.players.find(p => p.team !== s.team && p.returning <= 0 && p.protect <= 0 && dist(s, p) < R.shotRadius + R.bodyRadius);
+        if (SOLID[cellAt(s.x, s.y)] || s.travel > (s.range || R.shotRange) || (DYN.length && DYN.some(o => o.kind === "wall" && !o.pending && segsCross(ox, oy, s.x, s.y, o.ax, o.ay, o.bx, o.by)))) { dead = true; emit(g, "shot_end", s.x, s.y, { life: 0.3 }); break; }
+        // 分身が印を吸収する
+        const dc = g.objects.find(o => !o.dead && (o.kind === "decoy_run" || o.kind === "echo_clone" || o.kind === "decoy_static") && o.team !== s.team && Math.hypot(s.x - o.x, s.y - o.y) < R.shotRadius + R.bodyRadius);
+        if (dc) { dead = true; dc.dead = true; emit(g, "hit", dc.x, dc.y, { team: s.team, decoy: true }); break; }
+        const sn = g.objects.find(o => !o.dead && o.kind === "snake" && o.team !== s.team && Math.hypot(s.x - o.x, s.y - o.y) < R.shotRadius + 0.35);
+        if (sn) { dead = true; sn.dead = true; emit(g, "shot_end", sn.x, sn.y, { life: 0.3 }); break; }   // 白蛇は印で消せる
+        const q = g.players.find(p => p.team !== s.team && p.returning <= 0 && p.protect <= 0 && p.exposed <= 0 && dist(s, p) < R.shotRadius + R.bodyRadius);   // 露見中は的にならない
         if (q) {
           dead = true;
-          if (q.invuln <= 0) {
-            q.invuln = R.hitInvuln; q.reveal = R.revealDuration; q.slow = R.slowDuration;
-            unhide(g, q); q.marks++; q.markTime = R.markDuration; q.stats.marked++;
-            const owner = g.players.find(p => p.id === s.owner);
-            if (owner) owner.stats.hits++;
-            emit(g, "hit", q.x, q.y, { team: s.team, target: q.id, marks: q.marks });
-            logEvent(g, "hit", { by: s.owner, id: q.id, marks: q.marks, team: s.team });
-            q.emote = { type: "surprised", t: 1 };
-            if (q.marks >= 2) returnHome(g, q);
-          }
+          if (q.invuln <= 0) applyHit(g, q, s);
         }
       }
       if (!dead) alive.push(s);
@@ -1929,7 +3461,7 @@ const Sim = (() => {
     g.shots = alive;
 
     // 旗取得（このtickの候補を検証。帰還が先に処理されるので同tickの被弾者は無効）
-    const valid = claims.filter(p => p.returning <= 0 && p.protect <= 0 && p.camo === 0 && dist(p, FLAG) <= R.flagRadius && lineClear(p.x, p.y, FLAG.x, FLAG.y));
+    const valid = claims.filter(p => p.returning <= 0 && p.protect <= 0 && p.exposed <= 0 && p.camo === 0 && dist(p, FLAG) <= R.flagRadius && lineClear(p.x, p.y, FLAG.x, FLAG.y));
     if (valid.length) {
       g.phase = "finished"; g.flag = "claimed"; g.claimTick = g.tick;
       g.winner = [...new Set(valid.map(p => p.team))];
@@ -1955,6 +3487,376 @@ const Sim = (() => {
     }
   }
 
+  // ---------- HP・露見・復帰 ----------
+  function inSpawn(p) {
+    const b = D.MAP.spawnBox;
+    const x = p.team ? mirrorX(p.x) : p.x;
+    return x >= b.x0 && x <= b.x1 + 1 && p.y >= b.y0 && p.y <= b.y1 + 1;
+  }
+  // 影Lv3 残り香断ちは「見破り・被弾による可視化」だけに効く（固有技の可視化には効かない）
+  function setReveal(q, sec, perkable) { q.reveal = Math.max(q.reveal, sec - (perkable && hasPerk(q, "影", 3) ? 0.5 : 0)); }
+  // 猫の目（白目＝索敵+1／黒目＝擬態+1・最大5）を含めた、いまの係数
+  function balNow(p) {
+    const cb = modHas(p, "eyeBlack") && p.bal.stats.camo < 5, sb = modHas(p, "eyeWhite") && p.bal.stats.scout < 5;
+    if (!cb && !sb) return p.bal;
+    const b = Object.assign({}, p.bal);
+    if (cb) { b.camoDurMul += 0.10; b.camoEnterMul -= 0.08; b.camoSpeedMul += 0.10; }
+    if (sb) { b.scanRangeAdd += 0.5; b.scanCdMul -= 0.06; }
+    return b;
+  }
+  function modHas(p, k) { return p.mods.some(m => m.k === k); }
+  function modMul(p, k) { let v = 1; for (const m of p.mods) if (m.k === k) v *= m.mul; return v; }
+  function modAdd(p, k) { let v = 0; for (const m of p.mods) if (m.k === k) v += m.add; return v; }
+  // 同じ固有技の重複効果は加算せず、長い残り時間だけを採用する（設計図「実装基準」）
+  function addMod(p, k, t, extra) {
+    const src = (extra && extra.src) || k;
+    const ex = p.mods.find(m => m.src === src);
+    if (ex) { if (t > ex.t) Object.assign(ex, extra || {}, { k, t, src }); return ex; }
+    const m = Object.assign({ k, t, src }, extra || {}); p.mods.push(m); return m;
+  }
+  function hasPerk(p, tree, level) { return p.perks && p.perks[level] === tree; }
+  function dmgOf(g, owner, target, shot) {
+    let d = owner ? owner.bal.dmg * modMul(owner, "atk") : R.hp.baseDamage;
+    if (shot && shot.snipe) d *= 1.4;
+    let mul = target.bal.takenMul * modMul(target, "def");
+    if (hasPerk(target, "護", 2)) mul *= 0.96;
+    if (g.players.some(a => a !== target && a.team === target.team && a.ult.active > 0 && a.perks[5] === "護" && dist(a, target) <= 4)) mul *= 0.88;
+    d *= mul;
+    if (hasPerk(target, "護", 3) && target.firstHitArmed) { d -= 5; target.firstHitArmed = false; target.firstHitCd = 15; }
+    return Math.max(1, Math.round(d));
+  }
+  function applyHit(g, q, s) {
+    const owner = g.players.find(p => p.id === s.owner);
+    // 反応技：双龍円（正面の印を落とす）・変わり身（無効化して3m移動）
+    // 双龍円：前方から来た「最初の印」だけを落として構えを解く
+    if (q.sk.channel && q.sk.channel.kind === "parry" && Math.abs(angDiff(Math.atan2(-s.dy, -s.dx), q.angle)) <= 1.05) { q.sk.channel = null; emit(g, "parry", q.x, q.y, { team: q.team, life: 0.6 }); return; }
+    if (q.sk.kawarimi > 0 && !enemyNullAt(q)) {
+      q.sk.kawarimi = 0; q.mods = q.mods.filter(m => m.k !== "kawarimiArm");
+      const ix = q.input.x, iy = q.input.y, l = Math.hypot(ix, iy);
+      const ang = l > 0.1 ? Math.atan2(iy, ix) : q.angle;
+      emit(g, "kawarimi", q.x, q.y, { team: q.team, angle: ang, life: q.sk.smokeSec || 0.5 });
+      for (let d = q.sk.blink || 3; d > 0.5; d -= 0.5) { const nx = q.x + Math.cos(ang) * d, ny = q.y + Math.sin(ang) * d; if (!blocked(nx, ny, R.bodyRadius, q.team) && pathClear(q.x, q.y, nx, ny)) { q.x = nx; q.y = ny; q.px = nx; q.py = ny; break; } }
+      q.invuln = R.hitInvuln; return;
+    }
+    const dmg = dmgOf(g, owner, q, s);
+    let slow = true, revealSec = R.revealDuration;
+    // 守り兎：8秒以内の最初の減速を無効化し、印の残り時間（＝被弾の可視化）を3秒減らす
+    if (q.sk.shield > 0) { q.sk.shield = 0; slow = false; revealSec = Math.max(0, revealSec - (q.sk.shieldCut || 3)); q.mods = q.mods.filter(m => m.k !== "shield"); emit(g, "shield", q.x, q.y, { team: q.team, life: 0.6 }); }
+    q.invuln = R.hitInvuln; if (revealSec > 0) setReveal(q, revealSec, true); if (slow) q.slow = R.slowDuration;
+    unhide(g, q); q.stats.marked++; q.stats.taken += dmg; q.marks = 1; q.markTime = R.markDuration;
+    if (owner) { owner.stats.hits++; owner.stats.damage += dmg; if (q.exposed <= 0) addXp(g, owner.team, R.hp.xp.hit, "hit"); }
+    if (s.poison && owner && owner.sk.poisonArmed > 0) { owner.sk.poisonArmed = 0; addMod(q, "tracked", owner.sk.poisonDur || 6, { by: s.team }); }
+    q.hp = Math.max(0, q.hp - dmg);
+    emit(g, "hit", q.x, q.y, { team: s.team, target: q.id, dmg, hp: q.hp });
+    logEvent(g, "hit", { by: s.owner, id: q.id, dmg, hp: q.hp, team: s.team });
+    q.emote = { type: "surprised", t: 1 };
+    if (q.hp <= 0) expose(g, q, owner);
+  }
+  function expose(g, q, by) {
+    q.exposed = R.hp.exposeSec; q.hp = 0; q.healT = 0; q.stats.hp0++;
+    unhide(g, q, true); q.sk.channel = null; q.stunT = 0;
+    emit(g, "expose", q.x, q.y, { team: q.team, target: q.id, life: 1.2 });
+    logEvent(g, "expose", { id: q.id, by: by ? by.id : null, team: q.team });
+    // HP0 +12：同じ敵の再露見からは20秒間0（露見のたびに時刻を更新）
+    const last = g.lastExpose[q.id];
+    g.lastExpose[q.id] = g.elapsed;
+    if (by && !(last > g.elapsed - 20)) addXp(g, by.team, R.hp.xp.hp0, "hp0");
+  }
+  function recover(g, q, hp, how) {
+    q.exposed = 0; q.hp = Math.min(q.hpMax, hp); q.healT = 0; q.healBy = null; q.protect = Math.max(q.protect, how === "home" ? R.protect : 1); q.crossedCenter = false;
+    emit(g, "recover", q.x, q.y, { team: q.team, target: q.id, life: 1 });
+    logEvent(g, "recover", { id: q.id, how, team: q.team });
+  }
+
+  // ---------- 経験値・レベル・成長 ----------
+  function addXp(g, team, n, src) {
+    if (g.level[team] >= 5 && g.xp[team] >= R.hp.xpThresholds[4]) return;
+    g.xp[team] += n;
+    g.xpLog.push({ t: +g.elapsed.toFixed(1), team, n, src });
+    if (g.xpLog.length > 400) g.xpLog.shift();
+    for (const p of g.players) if (p.team === team) p.stats.xp += n;
+    while (g.level[team] < 5 && g.xp[team] >= R.hp.xpThresholds[g.level[team]]) {
+      g.level[team]++;
+      const L = g.level[team];
+      logEvent(g, "levelup", { team, level: L });
+      emit(g, "levelup", FLAG.x, FLAG.y, { team, level: L, life: 2 });
+      for (const p of g.players) if (p.team === team) { if (p.pendingLevel) choosePerk(g, p, null); p.pendingLevel = L; p.pickT = R.hp.pickSec; const old = p.hpMax; p.hpMax = R.hp.byLevel[L - 1]; if (p.exposed <= 0) p.hp = Math.min(p.hpMax, p.hp + (p.hpMax - old)); }
+    }
+  }
+  function defaultTree(p) {
+    const t = p.bal.tree;
+    if (t === "影" || t === "技" || t === "護") return t;
+    return p.role === "vanguard" ? "影" : p.role === "scout" ? "技" : "護";
+  }
+  function choosePerk(g, p, tree) {
+    if (!p.pendingLevel) return;
+    if (!["影", "技", "護"].includes(tree)) tree = defaultTree(p);
+    p.perks[p.pendingLevel] = tree;
+    logEvent(g, "perk", { id: p.id, team: p.team, level: p.pendingLevel, tree });
+    p.pendingLevel = 0; p.pickT = 0;
+  }
+  function useUlt(g, p) {
+    if (p.ult.used || p.perks[5] == null || p.exposed > 0) return;
+    const tree = p.perks[5];
+    if (tree === "影") { if (p.camo !== 2 || dist(p, FLAG) < 3) return; p.ult.used = true; p.ult.active = 5; addMod(p, "camoFast", 5); }
+    else if (tree === "技") { if (p.skillCd <= 0) return; p.ult.used = true; p.skillCd = 0; }
+    else { p.ult.used = true; p.ult.active = 8; }
+    emit(g, "ult", p.x, p.y, { team: p.team, tree, life: 1.2 });
+    logEvent(g, "ult", { id: p.id, team: p.team, tree });
+  }
+
+  // ---------- 固有技 ----------
+  function skillCdFor(g, p) {
+    const base = p.bal.skill ? p.bal.skill.cd : 20;
+    return base * (hasPerk(p, "技", 4) ? 0.85 : 1);
+  }
+  function addObj(g, o) { o.id = ++g.serial2; g.objects.push(o); return o; }
+  function aheadPos(p, d) { return { x: p.x + Math.cos(p.angle) * d, y: p.y + Math.sin(p.angle) * d }; }
+  function nearestAlly(g, p, range) { let best = null, bd = range; for (const q of g.players) { if (q === p || q.team !== p.team || q.returning > 0) continue; const d = dist(p, q); if (d < bd) { bd = d; best = q; } } return best; }
+  function enemyNullAt(p) { return DYN.some(o => o.kind === "zone_null" && o.team !== p.team && Math.hypot(p.x - o.x, p.y - o.y) <= o.r); }
+  // 線状の設置物（残火・棘道）を壁で切る
+  function clipRay(p, len) {
+    let ex = p.x, ey = p.y;
+    for (let d = 0.25; d <= len + 1e-6; d += 0.25) { const nx = p.x + Math.cos(p.angle) * d, ny = p.y + Math.sin(p.angle) * d; if (SOLID[cellAt(nx, ny)] || !pathClear(p.x, p.y, nx, ny)) break; ex = nx; ey = ny; }
+    return { x: ex, y: ey };
+  }
+  // 影穴の出口：入口から最大 range 先（壁で止まる・柄の上を優先）
+  function gateExitPoint(p, gate, range) {
+    let best = null, bestZone = null;
+    for (let d = 0.5; d <= range + 1e-6; d += 0.25) {
+      const nx = gate.x + Math.cos(p.angle) * d, ny = gate.y + Math.sin(p.angle) * d;
+      if (blocked(nx, ny, R.bodyRadius, p.team) || blocked(nx, ny, R.bodyRadius, 1 - p.team) || !pathClear(gate.x, gate.y, nx, ny)) break;
+      best = { x: nx, y: ny }; if (zoneAt(nx, ny)) bestZone = best;
+    }
+    return bestZone || best;
+  }
+  function useSkill(g, p, opt) {
+    const sk = p.bal.skill;
+    if (!sk || p.exposed > 0 || p.returning > 0) return;
+    // 影穴の2回目（出口を置く）はクールダウン中でも受け付ける（入口の6秒以内・入口のそばで）
+    if (sk.kind === "shadow_gate") {
+      const gate = g.objects.find(o => o.kind === "gate" && o.owner === p.id && !o.exit && !o.dead);
+      if (gate) {
+        const P0 = sk.params || {};
+        if (dist(p, gate) > 1.5 || enemyNullAt(p)) return;
+        const ex = gateExitPoint(p, gate, P0.range || 5); if (!ex) return;
+        gate.exit = ex; gate.life = P0.followSec || 3; gate.enemyUsed = false;
+        emit(g, "gate", p.x, p.y, { team: p.team, tx: ex.x, ty: ex.y, life: 0.8 });
+        unhide(g, p); p.x = ex.x; p.y = ex.y; p.px = ex.x; p.py = ex.y;   // 一度だけ移動する
+        return;
+      }
+    }
+    if (p.skillCd > 0 || p.protect > 0 || p.sk.channel) return;
+    if (enemyNullAt(p)) return;   // 罪業：中の敵は固有技を使えない（味方・本人は使える）
+    const P = sk.params || {}, k = sk.kind;
+    const fire = () => { p.skillCd = skillCdFor(g, p); p.stats.skills++; emit(g, "skill", p.x, p.y, { team: p.team, kind: k, owner: p.id, life: 0.8 }); logEvent(g, "skill", { id: p.id, team: p.team, kind: k, name: sk.name }); };
+    const num = (v, d) => (typeof v === "number" ? v : d);
+    switch (k) {
+      case "trail_reveal": {
+        const a = clipRay(p, num(P.len, 6));   // 壁越しには届かない
+        const tr = addObj(g, { kind: "trail", team: p.team, owner: p.id, ax: p.x, ay: p.y, bx: a.x, by: a.y, x: (p.x + a.x) / 2, y: (p.y + a.y) / 2, life: num(P.life, 3), revealSec: num(P.revealSec, 1.5) });
+        fireVsWater(g, tr, (w) => segDist(w.x, w.y, tr.ax, tr.ay, tr.bx, tr.by) <= w.r);   // 火遁で水鏡を2秒短縮・残火は水遁で消える
+        fire(); break; }
+      case "track_nearest": addObj(g, { kind: "track", team: p.team, owner: p.id, x: p.x, y: p.y, life: num(P.dur, 8), radius: num(P.radius, 9), delay: num(P.delay, 2), hist: [], next: 0 }); fire(); break;
+      case "substitution": p.sk.kawarimi = num(P.armSec, 8); p.sk.blink = num(P.blink, 3); p.sk.smokeSec = num(P.smokeSec, 0.5); addMod(p, "kawarimiArm", num(P.armSec, 8)); fire(); break;
+      case "zone_water": addObj(g, { kind: "zone_water", team: p.team, owner: p.id, x: p.x, y: p.y, r: num(P.r, 2.5), life: num(P.dur, 5), projSlow: num(P.projSlow, 0.2) }); fire(); break;
+      case "wall": { const c = aheadPos(p, 1.5), len = num(P.len, 3), nx = -Math.sin(p.angle), ny = Math.cos(p.angle); addObj(g, { kind: "wall", team: p.team, owner: p.id, x: c.x, y: c.y, ax: c.x - nx * len / 2, ay: c.y - ny * len / 2, bx: c.x + nx * len / 2, by: c.y + ny * len / 2, life: num(P.dur, 4) + num(P.warnSec, 0.7), warn: num(P.warnSec, 0.7), pending: true }); fire(); break; }
+      case "ally_shield": { const t = nearestAlly(g, p, num(P.range, 8)) || p; t.sk.shield = num(P.dur, 8); t.sk.shieldCut = num(P.markReduceSec, 3); addMod(t, "shield", num(P.dur, 8)); t.mods = t.mods.filter(m => m.k !== "tracked"); emit(g, "buff", t.x, t.y, { team: p.team, life: 0.8 }); fire(); break; }   // 守り兎は追香も除く
+      case "zone_fog": { const c = aheadPos(p, 2); addObj(g, { kind: "zone_fog", team: p.team, owner: p.id, x: c.x, y: c.y, r: num(P.r, 2), life: num(P.dur, 6), trailSec: num(P.trailSec, 2) }); fire(); break; }
+      case "decoy_run": addObj(g, { kind: "decoy_run", team: p.team, owner: p.id, char: p.char, x: p.x, y: p.y, angle: p.angle, life: num(P.dur, 6), speed: R.speed }); fire(); break;
+      case "freeze_bomb": { const t = aheadPos(p, Math.min(num(P.range, 6), 6)); addObj(g, { kind: "freeze_bomb", team: p.team, owner: p.id, x: t.x, y: t.y, r: num(P.r, 2.5), life: num(P.delay, 0.8), stun: num(P.stun, 1.2) }); fire(); break; }
+      case "dash": p.sk.channel = { kind: "dash", t: num(P.warnSec, 0.35), dist: num(P.dist, 5), revealSec: num(P.revealSec, 1), freeze: true, noShot: true }; fire(); break;
+      case "bomb": { const t = aheadPos(p, Math.min(num(P.range, 5), 5)); addObj(g, { kind: "bomb", team: p.team, owner: p.id, x: t.x, y: t.y, r: num(P.r, 3), life: num(P.fuse, 2), push: num(P.push, 3) }); fire(); break; }
+      case "poison_mark": p.sk.poisonArmed = num(P.armSec, 10); p.sk.poisonDur = num(P.dur, 6); fire(); break;
+      case "berserk": { const d = num(P.dur, 8); addMod(p, "atk", d, { src: "berserkAtk", mul: (1 + 2 * 0.12) / (1 + (p.bal.stats.atk - 3) * 0.12) }); addMod(p, "def", d, { src: "berserkDef", mul: (1 - 2 * 0.08) / p.bal.takenMul }); addMod(p, "noCamo", d); addMod(p, "visible", d); addMod(p, "berserkTail", d, { onEnd: (gg, pp) => addMod(pp, "speed", num(P.afterSlowSec, 2), { src: "berserkSlow", mul: 0.9 }) }); unhide(g, p); fire(); break; }
+      case "hawk_eye": p.sk.channel = { kind: "hawk_eye", t: num(P.channel, 3), radius: num(P.radius, 14), showSec: num(P.showSec, 2), cancelOnMove: true, noShot: true, cancelOnHit: true }; fire(); break;
+      case "fox_fires": { for (let i = 0; i < num(P.count, 3); i++) { const a = p.angle + (i - 1) * 1.2; addObj(g, { kind: "fox_fire", team: p.team, owner: p.id, x: p.x + Math.cos(a) * 2, y: p.y + Math.sin(a) * 2, r: 0.6, life: num(P.dur, 5), revealSec: num(P.revealSec, 2) }); } fire(); break; }
+      case "zone_dark": addObj(g, { kind: "zone_dark", team: p.team, owner: p.id, x: p.x, y: p.y, r: num(P.r, 3), life: num(P.dur, 4) }); fire(); break;
+      case "zone_petals": { const c = aheadPos(p, 2); addObj(g, { kind: "zone_petals", team: p.team, owner: p.id, x: c.x, y: c.y, r: num(P.r, 2.5), life: num(P.dur, 5), faster: num(P.camoStartFaster, 0.4) }); fire(); break; }
+      case "tailwind": addMod(p, "speed", num(P.dur, 4), { src: "tailwindSpeed", mul: 1 + num(P.speedBonus, 0.15) }); addMod(p, "tailwind", num(P.dur, 4), { dir: p.angle }); fire(); break;
+      case "sacrifice": { if (p.hp >= p.hpMax) return; p.hp = Math.min(p.hpMax, p.hp + num(P.heal, 15)); addMod(p, "shotCd", num(P.dur, 4), { src: "sacrificeShot", mul: 0.6, onEnd: (gg, pp) => addMod(pp, "def", num(P.afterSec, 6), { src: "sacrificeDef", mul: (1 + 2 * 0.08) / pp.bal.takenMul }) }); fire(); break; }   // 「印を一つ消す」＝HP回復に読み替え（HPが満タンだと使えない）
+      case "cleanse": { for (const q of g.players) if (q.team === p.team && q.returning <= 0 && dist(p, q) <= num(P.r, 4)) { q.mods = q.mods.filter(m => m.k !== "tracked" && m.k !== "fogTrail"); q.reveal = Math.max(0, q.reveal - num(P.revealCut, 2)); emit(g, "buff", q.x, q.y, { team: p.team, life: 0.8 }); } addObj(g, { kind: "halo", team: p.team, owner: p.id, x: p.x, y: p.y, r: num(P.r, 4), life: 1 }); fire(); break; }   // 追香・足跡を除き、印の残り時間（可視化）を2秒減らす
+      case "decoy_static": addObj(g, { kind: "decoy_static", team: p.team, owner: p.id, char: p.char, x: p.x, y: p.y, pattern: zoneAt(p.x, p.y) || "b", life: num(P.dur, 12) }); fire(); break;
+      case "snake": addObj(g, { kind: "snake", team: p.team, owner: p.id, x: p.x, y: p.y, angle: p.angle, life: num(P.dur, 7), speed: num(P.speed, 3), radius: num(P.radius, 3), reported: false }); fire(); break;
+      case "tempo": p.sk.channel = { kind: "tempo", t: num(P.channel, 5), r: num(P.r, 6), cdReduce: num(P.cdReduce, 2), cancelOnMove: true, noShot: true, cancelOnHit: true }; fire(); break;
+      case "zone_null": { p.sk.channel = { kind: "zone_null_setup", t: num(P.setupSec, 1), r: num(P.r, 3), dur: num(P.dur, 5), speedMul: 0.5 }; fire(); break; }
+      case "arrows": { for (let i = 0; i < num(P.count, 3); i++) { const a = aheadPos(p, 1 + i * 1.5); addObj(g, { kind: "arrow", team: p.team, owner: p.id, x: a.x, y: a.y, angle: p.angle, r: 0.7, life: num(P.dur, 10), silentSec: num(P.silentSec, 2) }); } fire(); break; }
+      case "paint_zone": { const c = aheadPos(p, 2.5), pats = ["b", "s", "w"]; addObj(g, { kind: "paint_zone", team: p.team, owner: p.id, x: c.x, y: c.y, half: num(P.size, 4) / 2, pattern: pats[(rng(g) * 3) | 0], life: num(P.dur, 8) }); fire(); break; }
+      case "leap": {
+        // 着地点を決めて0.3秒予告（壁と罪業の境目を越えない）
+        const d = num(P.dist, 4), inNull0 = DYN.some(o => o.kind === "zone_null" && Math.hypot(p.x - o.x, p.y - o.y) <= o.r);
+        let tgt = null;
+        for (let dd = 0.5; dd <= d + 1e-6; dd += 0.25) {
+          const nx = p.x + Math.cos(p.angle) * dd, ny = p.y + Math.sin(p.angle) * dd;
+          if (blocked(nx, ny, R.bodyRadius, p.team) || !pathClear(p.x, p.y, nx, ny)) break;
+          if (DYN.some(o => o.kind === "zone_null" && Math.hypot(nx - o.x, ny - o.y) <= o.r) !== inNull0) break;
+          tgt = { x: nx, y: ny };
+        }
+        if (!tgt) return;
+        p.sk.channel = { kind: "leap", t: num(P.warnSec, 0.3), tx: tgt.x, ty: tgt.y, jitterR: num(P.jitterR, 2), jitterSec: num(P.jitterSec, 0.6), freeze: true, noShot: true };
+        emit(g, "leap_warn", tgt.x, tgt.y, { team: p.team, life: num(P.warnSec, 0.3) });
+        unhide(g, p); fire(); break; }
+      case "parry": p.sk.channel = { kind: "parry", t: num(P.dur, 2), speedMul: num(P.speedMul, 0.5), noCamo: true }; unhide(g, p); fire(); break;
+      case "smash": p.sk.channel = { kind: "smash", t: num(P.windup, 0.9), reach: num(P.reach, 2.5), push: num(P.push, 3), missStun: num(P.missStun, 1), freeze: true, noShot: true }; fire(); break;
+      case "echo_clone": addObj(g, { kind: "echo_clone", team: p.team, owner: p.id, char: p.char, x: p.x, y: p.y, angle: p.angle, life: num(P.dur, 3), delay: num(P.delay, 0.6), hist: [] }); fire(); break;
+      case "thorns": { const a = aheadPos(p, num(P.len, 5)); addObj(g, { kind: "thorns", team: p.team, owner: p.id, ax: p.x, ay: p.y, bx: a.x, by: a.y, x: (p.x + a.x) / 2, y: (p.y + a.y) / 2, life: num(P.dur, 8), revealSec: num(P.revealSec, 3) }); fire(); break; }
+      case "hex": {
+        let best = null, bd = num(P.range, 8); for (const q of g.players) if (q.team !== p.team && q.exposed <= 0 && canSee(p, q) && dist(p, q) < bd) { bd = dist(p, q); best = q; } if (!best) return;
+        const range = num(P.range, 8), delay = num(P.cdDelay, 4), casterId = p.id;
+        // 4秒後にまだ術者の8m以内なら、固有技の回復を4秒遅らせる（離れれば不発）
+        addMod(best, "hexed", num(P.dur, 4), { onEnd: (gg, pp) => { const by = gg.players.find(x => x.id === casterId); if (by && by.returning <= 0 && pp.returning <= 0 && dist(by, pp) <= range) { pp.skillCd += delay; emit(gg, "hex", pp.x, pp.y, { team: by.team, target: pp.id, life: 1 }); } } });
+        emit(g, "hex", best.x, best.y, { team: p.team, target: best.id, life: 1 }); fire(); break; }
+      case "cat_choice": { const white = opt === "white" || (opt == null && g.players.some(q => q.team !== p.team && canSee(p, q))); addMod(p, white ? "eyeWhite" : "eyeBlack", num(P.dur, 5)); fire(); break; }   // 係数は balNow() が読む
+      case "snipe": p.sk.channel = { kind: "snipe", t: num(P.channel, 1.2), range: num(P.range, 14), speed: num(P.speed, 28), cancelOnMove: true, noShot: true, cancelOnHit: true }; unhide(g, p); fire(); break;
+      case "soul_return": { const t = g.players.find(q => q.team === p.team && q !== p && q.returning > 0 && !q.soulBoosted); if (!t) return; t.returning = Math.max(0.1, t.returning - num(P.returnCut, 1.5)); t.protectBonus = num(P.protectAdd, 1); t.soulBoosted = true; emit(g, "buff", t.x, t.y, { team: p.team, life: 0.8 }); fire(); break; }   // 帰還中の味方だけ・同じ帰還へ一度だけ
+      case "thread": { const t = nearestAlly(g, p, num(P.range, 8)); if (!t) return; const d = num(P.dur, 8); addMod(p, "thread", d, { with: t.id, linkRange: num(P.linkRange, 6) }); addMod(t, "thread", d, { with: p.id, linkRange: num(P.linkRange, 6) }); fire(); break; }
+      case "fox_dash": { const d = num(P.dur, 6); addMod(p, "camoFast", d); addMod(p, "foxdash", d); fire(); break; }   // 対処：布の揺れ（足音）が大きく、近距離（2.1m以内）では輪郭が見える
+      case "counter_stance": p.sk.channel = { kind: "counter_stance", t: num(P.dur, 1.1), reach: num(P.reach, 2), stun: num(P.stun, 0.8), speedMul: 0.7, noShot: true }; unhide(g, p); fire(); break;   // 構えたまま下がれる
+      case "shadow_gate": addObj(g, { kind: "gate", team: p.team, owner: p.id, x: p.x, y: p.y, r: 0.8, life: num(P.window, 6), exit: null }); emit(g, "gate", p.x, p.y, { team: p.team, life: 0.8 }); fire(); break;
+      default: fire();
+    }
+  }
+  // 詠唱・構えの進行（毎tick）
+  function stepChannel(g, p, dt, acts) {
+    const c = p.sk.channel; if (!c) return;
+    if (c.cancelOnHit && p.invuln > 0 && p.invuln > R.hitInvuln - dt * 1.5) { p.sk.channel = null; return; }
+    if (c.kind === "hawk_eye" && p.speedNow > 0.3) { p.sk.channel = null; return; }
+    c.t -= dt;
+    if (c.t > 0) return;
+    p.sk.channel = null;
+    switch (c.kind) {
+      case "dash": { let done = false; for (let dd = c.dist; dd > 0.5 && !done; dd -= 0.5) { const nx = p.x + Math.cos(p.angle) * dd, ny = p.y + Math.sin(p.angle) * dd; if (!blocked(nx, ny, R.bodyRadius, p.team) && pathClear(p.x, p.y, nx, ny)) { for (const q of g.players) if (q.team !== p.team && segDist(q.x, q.y, p.x, p.y, nx, ny) <= 0.8) { setReveal(q, c.revealSec); unhide(g, q); } emit(g, "dashline", p.x, p.y, { team: p.team, tx: nx, ty: ny, life: 0.5 }); p.x = nx; p.y = ny; p.px = nx; p.py = ny; done = true; } } unhide(g, p); break; }
+      case "hawk_eye": { for (const q of g.players) if (q.team !== p.team && q.returning <= 0 && q.speedNow > 0.3 && dist(p, q) <= c.radius) { q.lastSeen = { x: q.x, y: q.y, t: c.showSec, team: p.team }; emit(g, "spotted", q.x, q.y, { team: p.team, life: c.showSec }); } break; }
+      case "tempo": { for (const q of g.players) if (q.team === p.team && q !== p && dist(p, q) <= c.r) q.skillCd = Math.max(0, q.skillCd - c.cdReduce); break; }
+      case "zone_null_setup": { addObj(g, { kind: "zone_null", team: p.team, owner: p.id, x: p.x, y: p.y, r: c.r, life: c.dur }); break; }
+      case "leap": {
+        if (!blocked(c.tx, c.ty, R.bodyRadius, p.team) && pathClear(p.x, p.y, c.tx, c.ty)) {
+          emit(g, "leap", p.x, p.y, { team: p.team, tx: c.tx, ty: c.ty, life: 0.5 });
+          p.x = c.tx; p.y = c.ty; p.px = c.tx; p.py = c.ty;
+          for (const q of g.players) if (q.team !== p.team && q.returning <= 0 && dist(p, q) <= c.jitterR) q.aimJitter = c.jitterSec;   // 着地点から2mの敵の照準を乱す
+        }
+        break; }
+      case "smash": {
+        const a = aheadPos(p, c.reach / 2); let hit = 0;
+        const push = (x, y) => { const ang = Math.atan2(y - p.y, x - p.x); return { dx: Math.cos(ang) * c.push, dy: Math.sin(ang) * c.push }; };
+        const inFront = (x, y, extra) => Math.hypot(x - p.x, y - p.y) <= c.reach + extra && (Math.hypot(x - p.x, y - p.y) < 0.6 || Math.abs(angDiff(Math.atan2(y - p.y, x - p.x), p.angle)) <= Math.PI / 3) && pathClear(p.x, p.y, x, y);   // 前方2.5m・壁の向こうには届かない
+        for (const q of g.players) if (q.team !== p.team && q.returning <= 0 && q.exposed <= 0 && inFront(q.x, q.y, R.bodyRadius)) { hit++; const ang = Math.atan2(q.y - p.y, q.x - p.x); for (let dd = c.push; dd > 0; dd -= 0.5) { const nx = q.x + Math.cos(ang) * dd, ny = q.y + Math.sin(ang) * dd; if (!blocked(nx, ny, R.bodyRadius, q.team) && pathClear(q.x, q.y, nx, ny)) { q.x = nx; q.y = ny; break; } } unhide(g, q); setReveal(q, 1); }
+        // 設置物は3m押し出す（金剛壁は壊す）
+        for (const o of g.objects) {
+          if (o.dead || o.team === p.team && o.kind !== "wall") continue;
+          if (!inFront(o.x, o.y, o.r || o.half || 0.5)) continue;
+          hit++;
+          if (o.kind === "wall") { o.dead = true; continue; }
+          const v = push(o.x, o.y); o.x += v.dx; o.y += v.dy;
+          if (o.ax != null) { o.ax += v.dx; o.ay += v.dy; o.bx += v.dx; o.by += v.dy; }
+        }
+        if (!hit) p.stunT = c.missStun;   // 外すと1秒停止
+        emit(g, "smash", a.x, a.y, { team: p.team, life: 0.5 }); break; }
+      case "snipe": { const ang = p.angle + (p.aimJitter > 0 ? (rng(g) - 0.5) * 0.8 : 0); g.shots.push({ id: ++g.serial, owner: p.id, team: p.team, x: p.x, y: p.y, dx: Math.cos(ang), dy: Math.sin(ang), travel: 0, angle: ang, speed: c.speed, range: c.range, snipe: true }); emit(g, "throw", p.x, p.y, { team: p.team, life: 0.3 }); break; }   // 迅雷羽の照準乱れは狙撃にも効く
+      default: break;
+    }
+  }
+  // 設置物の進行
+  // 火遁（残火・焙烙玉）が敵の水鏡に触れたら水鏡を2秒短縮し、残火は消える
+  function fireVsWater(g, fireObj, touches) {
+    for (const w of g.objects) {
+      if (w.dead || w.kind !== "zone_water" || w.team === fireObj.team || !touches(w)) continue;
+      w.life = Math.max(0.05, w.life - 2);
+      if (fireObj.kind === "trail") { fireObj.dead = true; emit(g, "steam", w.x, w.y, { team: w.team, life: 0.6 }); }
+    }
+  }
+  function burstBomb(g, o) {
+    for (const q of g.players) if (q.team !== o.team && q.returning <= 0 && q.exposed <= 0 && dist(o, q) <= o.r && lineClear(o.x, o.y, q.x, q.y)) {   // 遮蔽物の裏なら当たらない
+      const ang = Math.atan2(q.y - o.y, q.x - o.x);
+      for (let dd = o.push; dd > 0; dd -= 0.5) { const nx = q.x + Math.cos(ang) * dd, ny = q.y + Math.sin(ang) * dd; if (!blocked(nx, ny, R.bodyRadius, q.team) && pathClear(q.x, q.y, nx, ny)) { q.x = nx; q.y = ny; break; } }
+      unhide(g, q); setReveal(q, 1);
+    }
+    // 範囲攻撃で分身は同時に消える
+    for (const d of g.objects) if (!d.dead && d.team !== o.team && (d.kind === "echo_clone" || d.kind === "decoy_run" || d.kind === "decoy_static") && dist(o, d) <= o.r) d.dead = true;
+    fireVsWater(g, o, (w) => dist(o, w) <= o.r + w.r);
+    emit(g, "burst", o.x, o.y, { team: o.team, r: o.r, life: 0.5 });
+  }
+  function stepObjects(g, dt) {
+    const EPS = 1e-6;
+    for (const o of g.objects) {
+      if (o.dead) continue;
+      o.life -= dt; o.age = (o.age || 0) + dt;
+      // 時限式は寿命が尽きた tick に必ず発動する（浮動小数の誤差で取りこぼさない）
+      if (o.kind === "freeze_bomb" && o.life <= EPS) { for (const q of g.players) if (q.team !== o.team && q.returning <= 0 && q.exposed <= 0 && dist(o, q) <= o.r) q.stunT = Math.max(q.stunT, o.stun); emit(g, "burst", o.x, o.y, { team: o.team, r: o.r, life: 0.5 }); o.dead = true; continue; }
+      if (o.kind === "bomb" && o.life <= EPS) { burstBomb(g, o); o.dead = true; continue; }
+      if (o.life <= EPS) { o.dead = true; continue; }
+      if (o.kind === "wall" && o.pending && o.age >= o.warn - EPS) {
+        o.pending = false; emit(g, "wall_up", o.x, o.y, { team: o.team, life: 0.4 });
+        const L = Math.hypot(o.bx - o.ax, o.by - o.ay) || 1, ux = -(o.by - o.ay) / L, uy = (o.bx - o.ax) / L;
+        for (const q of g.players) {
+          if (q.returning > 0) continue;
+          const d = segDist(q.x, q.y, o.ax, o.ay, o.bx, o.by); if (d >= R.bodyRadius + 0.26) continue;
+          const side = ((q.x - o.ax) * ux + (q.y - o.ay) * uy) >= 0 ? 1 : -1;
+          let moved = false;
+          for (const sd of [side, -side]) { for (let k = 0; k < 10 && !moved; k++) { const need = R.bodyRadius + 0.3 - (sd === side ? d : -d) + k * 0.1; const tx = q.x + ux * sd * need, ty = q.y + uy * sd * need; if (!blocked(tx, ty, R.bodyRadius, q.team)) { q.x = tx; q.y = ty; q.px = tx; q.py = ty; moved = true; } } if (moved) break; }
+        }
+      }
+      // 水遁：敵の残火は即座に消え、敵の狐火を一つ消す
+      if (o.kind === "zone_water") {
+        for (const t of g.objects) if (!t.dead && t.kind === "trail" && t.team !== o.team && segDist(o.x, o.y, t.ax, t.ay, t.bx, t.by) <= o.r) { t.dead = true; emit(g, "steam", t.x, t.y, { team: o.team, life: 0.6 }); }
+        if (!o.foxDone) { const f = g.objects.find(t => !t.dead && t.kind === "fox_fire" && t.team !== o.team && dist(o, t) <= o.r + t.r); if (f) { f.dead = true; o.foxDone = true; emit(g, "steam", f.x, f.y, { team: o.team, life: 0.6 }); } }
+      }
+      if (o.kind === "decoy_run") { const nx = o.x + Math.cos(o.angle) * o.speed * dt, ny = o.y + Math.sin(o.angle) * o.speed * dt; if (!blocked(nx, ny, R.bodyRadius, o.team)) { o.x = nx; o.y = ny; } else o.dead = true; }
+      if (o.kind === "snake") {
+        const nx = o.x + Math.cos(o.angle) * o.speed * dt, ny = o.y + Math.sin(o.angle) * o.speed * dt; if (!blocked(nx, ny, 0.2, o.team)) { o.x = nx; o.y = ny; } else { o.angle += Math.PI / 2; }
+        // 3m以内の擬態開始痕を一度だけ知らせる（現在位置ではなく開始地点）
+        if (!o.reported) { const mk = g.camoMarks.find(m => m.team !== o.team && g.elapsed - m.t <= 20 && Math.hypot(m.x - o.x, m.y - o.y) <= o.radius); if (mk) { o.reported = true; emit(g, "spotted", mk.x, mk.y, { team: o.team, life: 2, mark: true }); } }
+      }
+      if (o.kind === "echo_clone") { const own = g.players.find(p => p.id === o.owner); if (own) { o.hist.push({ x: own.x, y: own.y, a: own.angle, t: g.elapsed }); const past = o.hist.find(h => g.elapsed - h.t <= o.delay); if (past) { o.x = past.x; o.y = past.y; o.angle = past.a; } } }
+      if (o.kind === "track") {
+        const own = g.players.find(p => p.id === o.owner);
+        if (own) { o.x = own.x; o.y = own.y; }   // 白狐は術者について回る
+        o.next -= dt;
+        if (o.next <= 0 && own) {
+          o.next = 0.5;
+          let best = null, bd = o.radius; for (const q of g.players) if (q.team !== o.team && q.returning <= 0 && !(q.camo === 2 && q.speedNow < 0.1) && dist(own, q) < bd) { bd = dist(own, q); best = q; }
+          o.hist.push({ x: best ? best.x : null, y: best ? best.y : null, t: g.elapsed });
+          // 足跡は「2秒前」の情報：delay 以上前のうち一番新しいもの
+          let past = null; for (let j = o.hist.length - 1; j >= 0; j--) if (g.elapsed - o.hist[j].t >= o.delay - 1e-6) { past = o.hist[j]; break; }
+          o.mark = past && past.x != null ? { x: past.x, y: past.y } : null;
+          while (o.hist.length && g.elapsed - o.hist[0].t > o.delay + 1) o.hist.shift();
+        }
+      }
+      if (o.kind === "gate" && o.exit && o.life <= EPS) o.dead = true;
+    }
+    if (g.objects.some(o => o.dead)) g.objects = g.objects.filter(o => !o.dead);
+    if (g.camoMarks.length && g.elapsed - g.camoMarks[0].t > 30) g.camoMarks = g.camoMarks.filter(m => g.elapsed - m.t <= 30);
+    // 結び糸：互いが6m以内なら被発見時間を20%短縮／6mを超えると切れる
+    for (const p of g.players) {
+      const m = p.mods.find(x => x.k === "thread"); if (!m) continue;
+      const q = g.players.find(x => x.id === m.with);
+      if (!q || q.returning > 0 || p.returning > 0 || dist(p, q) > m.linkRange) { p.mods = p.mods.filter(x => x.k !== "thread"); if (q) q.mods = q.mods.filter(x => !(x.k === "thread" && x.with === p.id)); continue; }
+      if (p.reveal > 0) p.reveal = Math.max(0, p.reveal - dt * 0.25);
+    }
+  }
+  // 設置物との接触
+  function touchObjects(g, p) {
+    for (const o of g.objects) {
+      if (o.dead) continue;
+      if (o.kind === "fox_fire" && o.team !== p.team && dist(p, o) <= o.r + R.bodyRadius) { setReveal(p, o.revealSec); unhide(g, p); o.dead = true; emit(g, "found", p.x, p.y, { team: o.team, target: p.id }); }
+      if (o.kind === "thorns" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= (p.crouch ? 0.2 : 0.4) && !(o.last === p.id && g.elapsed - o.lastT < 3)) { o.last = p.id; o.lastT = g.elapsed; addMod(p, "fogTrail", o.revealSec, { src: "thornsTrail" }); emit(g, "footprint", p.x, p.y, { team: o.team, life: o.revealSec }); }
+      if (o.kind === "trail" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= 0.5 && !(o.last === p.id && g.elapsed - o.lastT < 1.5)) { o.last = p.id; o.lastT = g.elapsed; setReveal(p, o.revealSec); unhide(g, p); }
+      if (o.kind === "arrow" && o.team === p.team && dist(p, o) <= o.r) p.silentT = Math.max(p.silentT, o.silentSec);
+      if (o.kind === "zone_fog" && o.team !== p.team) {
+        o.inside = o.inside || {};
+        const inside = dist(p, o) <= o.r;
+        if (o.inside[p.id] && !inside) addMod(p, "fogTrail", o.trailSec);   // 外へ出た後も足跡が2秒残る
+        o.inside[p.id] = inside;
+      }
+      if ((o.kind === "zone_fog" || o.kind === "zone_petals") && o.team !== p.team && !o.windHit && modHas(p, "tailwind") && dist(p, o) <= o.r + 1) {
+        o.windHit = true; o.life = o.life / 2;   // 風遁で半分の時間に短縮・押し流す
+        o.x += Math.cos(p.angle) * 1.5; o.y += Math.sin(p.angle) * 1.5;
+        emit(g, "wind", o.x, o.y, { team: p.team, life: 0.5 });
+      }
+      if (o.kind === "gate" && o.exit && o.team !== p.team && !o.enemyUsed && dist(p, o) <= o.r && !blocked(o.exit.x, o.exit.y, R.bodyRadius, p.team)) { o.enemyUsed = true; p.x = o.exit.x; p.y = o.exit.y; p.px = p.x; p.py = p.y; emit(g, "gate", p.x, p.y, { team: o.team, life: 0.6 }); }   // 敵も一度だけ追って入れる
+    }
+  }
+
   // ネット対戦：受け取った入力を反映（連番の重複・古い入力は捨てる。行動は次のtickまで溜める）
   function netInput(p, m) {
     if (!m || typeof m !== "object") return;
@@ -1967,37 +3869,69 @@ const Sim = (() => {
     if (len > 1) { x /= len; y /= len; }
     p.input.x = x; p.input.y = y;
     p.input.angle = Number.isFinite(m.angle) ? m.angle : null;
-    const acts = Array.isArray(m.actions) ? m.actions.filter(a => ACTIONS.includes(a) || (typeof a === "string" && a.startsWith("ping:"))).slice(0, 6) : [];
+    const acts = Array.isArray(m.actions) ? m.actions.filter(ACT_OK).slice(0, 8) : [];
     for (const a of acts) if (!p.input.actions.includes(a)) p.input.actions.push(a);
   }
   // ネット対戦：観戦者ごとに見える情報だけを抜き出す（壁の向こうの敵は送らない・擬態中の敵は布の位置だけ）
-  function pubPlayer(p, full) {
+  // 敵にも見えてよい強化（設計図の「対処」で見えると書かれているもの）
+  const PUBLIC_MODS = { visible: 1, tracked: 1, hexed: 1, shield: 1, tailwind: 1, eyeWhite: 1, eyeBlack: 1, thread: 1, foxdash: 1 };
+  function pubPlayer(p, full, g, enemy) {
     const o = { id: p.id, team: p.team, char: p.char, name: p.name, bot: p.bot, x: +p.x.toFixed(2), y: +p.y.toFixed(2), angle: +p.angle.toFixed(2),
       crouch: p.crouch, camo: p.camo, camoEnter: p.camoEnter, camoPattern: p.camoPattern, reveal: p.reveal, marks: p.marks, protect: p.protect, returning: p.returning,
-      speedNow: +p.speedNow.toFixed(2), pulse: p.pulse, emote: p.emote, connected: p.connected !== false, role: p.role };
-    if (full) Object.assign(o, { camoTime: p.camoTime, camoCd: p.camoCd, scanCd: p.scanCd, shotCd: p.shotCd, pingCd: p.pingCd, castleTime: p.castleTime, slow: p.slow, stats: p.stats });
+      speedNow: +p.speedNow.toFixed(2), pulse: p.pulse, emote: p.emote, connected: p.connected !== false, role: p.role,
+      hp: p.hp, hpMax: p.hpMax, exposed: +p.exposed.toFixed(1), healT: +p.healT.toFixed(2), stunT: p.stunT, channel: p.sk.channel ? p.sk.channel.kind : null, modKeys: [...new Set(p.mods.map(m => m.k))].filter(k => !enemy || PUBLIC_MODS[k]), ultActive: p.ult.active };
+    if (full) Object.assign(o, { camoTime: p.camoTime, camoCd: p.camoCd, scanCd: p.scanCd, shotCd: p.shotCd, pingCd: p.pingCd, castleTime: p.castleTime, slow: p.slow, stats: p.stats,
+      skillCd: p.skillCd, skillCdMax: skillCdFor(g, p), perks: p.perks, pendingLevel: p.pendingLevel, pickT: p.pickT, ult: p.ult, kawarimi: p.sk.kawarimi || 0, poisonArmed: p.sk.poisonArmed || 0, shield: p.sk.shield || 0 });
     return o;
   }
   function snapshot(g, viewerId) {
+    bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     const players = [], sounds = [];
     for (const p of g.players) {
-      if (!v || p.team === v.team) { players.push(pubPlayer(p, p === v)); continue; }
+      if (!v || p.team === v.team) { players.push(pubPlayer(p, p === v, g)); continue; }
       const view = enemyView(v, p);
       if (view === "none") {
-        if (p.pulse && p.returning <= 0) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen });
-        else if (p.lastSeen) players.push({ id: p.id, team: p.team, ghost: true, lastSeen: p.lastSeen });
+        const tk = trackDirFor(v, p);
+        if (p.pulse && p.returning <= 0) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen, trackDir: tk });
+        else if (p.lastSeen || tk != null) players.push({ id: p.id, team: p.team, char: p.char, ghost: true, lastSeen: p.lastSeen, trackDir: tk });
         if (audible(v, p)) sounds.push({ a: +Math.atan2(p.y - v.y, p.x - v.x).toFixed(2), d: +dist(v, p).toFixed(1) });
         continue;
       }
       if (view === "cloth") players.push({ id: p.id, team: p.team, char: p.char, name: "", x: +p.x.toFixed(2), y: +p.y.toFixed(2), angle: 0, camo: 2, camoPattern: p.camoPattern, speedNow: +p.speedNow.toFixed(2), cloth: true, reveal: 0, marks: 0, protect: 0, returning: 0, crouch: false });
-      else { const o = pubPlayer(p, false); o.lastSeen = p.lastSeen; players.push(o); }
+      else { const o = pubPlayer(p, false, g, true); o.lastSeen = p.lastSeen; players.push(o); }
     }
     const shots = g.shots.filter(s => !v || s.team === v.team || (dist(v, s) < 22 && lineClear(v.x, v.y, s.x, s.y))).map(s => ({ id: s.id, team: s.team, x: +s.x.toFixed(2), y: +s.y.toFixed(2), angle: +s.angle.toFixed(2) }));
-    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds };
+    const objects = g.objects.filter(o => !o.dead && objVisible(g, v, o)).map(o => pubObject(o, v));
+    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds, objects, xp: g.xp, level: g.level };
+  }
+  function objVisible(g, v, o) {
+    if (!v) return true;
+    if (o.team === v.team) return true;
+    if (o.kind === "track" || o.kind === "arrow" && false) return false;
+    if (o.kind === "decoy_static" && o.team !== v.team) return dist(v, o) <= R.viewRange && lineClear(v.x, v.y, o.x, o.y);
+    return dist(v, o) <= R.viewRange + (o.r || 2) && (o.kind === "zone_dark" || o.kind === "zone_fog" || lineClear(v.x, v.y, o.x, o.y));
+  }
+  function pubObject(o, v) {
+    const base = { id: o.id, kind: o.kind, team: o.team, x: +o.x.toFixed(2), y: +o.y.toFixed(2), life: +o.life.toFixed(2), r: o.r, half: o.half, pattern: o.pattern, angle: o.angle, char: o.char, pending: o.pending, ax: o.ax, ay: o.ay, bx: o.bx, by: o.by, exit: o.exit };
+    if (o.kind === "track" && v && o.team === v.team) base.mark = o.mark;
+    if (o.kind === "decoy_static" && v && o.team !== v.team) { base.camo = 2; }
+    return base;
+  }
+  const PUBLIC_LOG = { start: 1, end: 1, overtime: 1, levelup: 1, pulse: 1, botTakeover: 1, "return": 1 };
+  function logVisible(g, viewerId, l) {
+    const v = g.players.find(p => p.id === viewerId);
+    if (!v) return true;
+    if (l.type === "ping" || l.type === "perk" || l.type === "ult") return l.team === v.team;
+    if (l.team === v.team) return true;
+    const mine = id => { const q = id != null && g.players.find(p => p.id === id); return !!q && q.team === v.team; };
+    if (mine(l.id) || mine(l.by)) return true;
+    if (l.type === "skill") { const c = g.players.find(p => p.id === l.id); return !!c && enemyView(v, c) !== "none"; }
+    return !!PUBLIC_LOG[l.type];
   }
   // 効果は観戦者に関係あるものだけ（合図は味方のみ）
   function effectVisible(g, viewerId, e) {
+    bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     if (!v) return true;
     if (e.type === "ping") return e.team === v.team;
@@ -2009,9 +3943,17 @@ const Sim = (() => {
     return { think: 0, wp: 0, phase: "route", suspect: null, seen: 0, goAt: 0, lastPing: -99, lastPingKind: "", waitT: 0, scanned: false, post: null, postT: 0, patience: 40, lastContact: -99, minClaim: 30, stepOut: false, hz: "attack", hzT: 0, quietT: 0, shotAt: -99, routeOverride: null };
   }
 
+  // 追香：追跡側のチームには、見えない相手の「移動方向」だけを渡す（位置は渡さない）
+  function trackDirFor(viewer, q) {
+    const m = q.mods.find(x => x.k === "tracked" && x.by === viewer.team);
+    if (!m || q.returning > 0) return null;
+    const vx = q.x - q.px, vy = q.y - q.py;
+    return +(Math.hypot(vx, vy) > 1e-4 ? Math.atan2(vy, vx) : q.angle).toFixed(2);
+  }
   // 観戦側（人間）の可視情報：敵をどう描くか
   function enemyView(viewer, q) {
     if (q.returning > 0) return "none";
+    if (q.exposed > 0 && dist(viewer, q) <= R.viewRange && lineClear(viewer.x, viewer.y, q.x, q.y)) return "revealed";
     if (q.reveal > 0) return "revealed";
     if (canSee(viewer, q)) return "seen";
     if (clothVisible(viewer, q)) return "cloth";
@@ -2019,8 +3961,9 @@ const Sim = (() => {
   }
 
   return { R, D, W, H, TICK, FLAG, grid, SOLID, cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
-    field, steer, createMatch, resetForRematch, makePlayer, setInput, netInput, snapshot, effectVisible, freshAi, assignAi, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor };
+    field, steer, createMatch, resetForRematch, makePlayer, setInput, netInput, snapshot, effectVisible, freshAi, assignAi, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor,
+    useSkill, useUlt, choosePerk, addXp, hasPerk, balanceFor, balNow, skillCdFor, inZone, trackDirFor, bindDyn, logVisible, pathClear, get objects() { return DYN; } };
 })();
 
 
-export { Sim, DATA, CHARS_ALL };
+export { Sim, DATA, CHARS_ALL, BALANCE };

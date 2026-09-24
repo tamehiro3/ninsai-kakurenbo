@@ -8,7 +8,7 @@
   // ---------- 保存 ----------
   const DEFAULT_SAVE = {
     settings: { swapSides: false, zoom: 1, reduceMotion: false, footMarks: true, volume: 0.7, difficulty: "normal", charId: "kohaku", mates: [null, null], team: 0, role: "vanguard", showKeys: false },
-    stats: { matches: 0, wins: 0, ties: 0, losses: 0, bestClaim: 0, hides: 0, reveals: 0, hits: 0, returns: 0, claims: 0, tutorialDone: false },
+    stats: { matches: 0, wins: 0, ties: 0, losses: 0, bestClaim: 0, hides: 0, reveals: 0, hits: 0, returns: 0, claims: 0, hp0: 0, heals: 0, skills: 0, tutorialDone: false },
     chars: {},
   };
   let save;
@@ -78,6 +78,17 @@
       ui: () => tone(600, 0.05, "square", 0.04),
       drum: () => { tone(70, 0.9, "sine", 0.22, 0, 45); noise(0.05, 0.04, 120); },
       warn: () => tone(440, 0.12, "square", 0.05),
+      // HP・露見・成長・固有技（設計図：HP・レベルアップ）
+      hurt: () => { noise(0.1, 0.18, 380); tone(150, 0.22, "square", 0.09, 0, 70); },
+      expose: () => { tone(320, 0.45, "sawtooth", 0.1, 0, 80); noise(0.3, 0.14, 260); tone(160, 0.5, "sine", 0.12, 0.1, 60); },
+      exposeEnemy: () => { tone(660, 0.1, "square", 0.08); tone(880, 0.12, "square", 0.08, 0.1); tone(440, 0.3, "triangle", 0.1, 0.22, 220); },
+      heal: () => { tone(784, 0.12, "sine", 0.08); tone(1047, 0.16, "sine", 0.08, 0.1); tone(1319, 0.28, "sine", 0.08, 0.2); },
+      levelup: () => { [523, 659, 784].forEach((f, i) => tone(f, 0.2, "triangle", 0.12, i * 0.08)); tone(1047, 0.45, "triangle", 0.12, 0.25); noise(0.12, 0.05, 2000, 0.25); },
+      levelupEnemy: () => { tone(392, 0.2, "triangle", 0.07); tone(330, 0.3, "triangle", 0.07, 0.15); },
+      skill: () => { noise(0.14, 0.1, 1400); tone(720, 0.2, "sine", 0.08, 0.02, 1150); },
+      skillEnemy: () => { noise(0.1, 0.06, 900); tone(520, 0.14, "sine", 0.05, 0, 700); },
+      ult: () => { tone(220, 0.7, "sawtooth", 0.1, 0, 440); tone(330, 0.7, "triangle", 0.1, 0.05, 660); noise(0.45, 0.1, 500, 0.05); tone(880, 0.55, "triangle", 0.12, 0.3); tone(1319, 0.6, "sine", 0.08, 0.4); },
+      pick: () => { tone(880, 0.06, "square", 0.05); tone(1175, 0.08, "square", 0.05, 0.06); },
     };
     function play(n) { if (ac && fx[n]) { if (ac.state === "suspended") ac.resume(); fx[n](); } }
     function startAmbient() {
@@ -117,16 +128,42 @@
   }
   buildHowto();
 
+  // ---------- 能力値・固有技の表示（ロビー・図鑑で共通） ----------
+  const STAT_KEYS = D.STAT_NAMES || [["spd", "速さ"], ["camo", "擬態"], ["atk", "攻撃"], ["def", "防御"], ["scout", "索敵"], ["esc", "逃走"]];
+  function statBars(c, mini) {
+    const st = c.stats || {};
+    return `<div class="sbars ${mini ? "mini" : ""}">${STAT_KEYS.map(([k, n]) => { const v = Math.max(0, Math.min(5, st[k] | 0)); return `<div class="sbar" title="${n} ${v}/5"><span>${n}</span><i><b class="v${v}" style="width:${v * 20}%"></b></i><em>${v}</em></div>`; }).join("")}</div>`;
+  }
+  const TREE_LIST = ["影", "技", "護"];
+  const treeLabel = t => TREE_LIST.includes(t) ? t : "選択（好みで）";
+  const ultName = tree => { const n = D.TREES && D.TREES[tree] && D.TREES[tree][5] ? D.TREES[tree][5].name : ""; return n.replace(/^奥義・/, "") || tree; };
+  // ボタンに収まる短い技名（「火遁・残火」→「残火」）
+  function shortSkillName(name) {
+    if (!name) return "固有技";
+    let s = name.includes("・") ? name.split("・").pop() : name;
+    if (s.length > 5) s = s.slice(0, 5);
+    return s;
+  }
+  function skillHtml(c, compact) {
+    const sk = c.skill;
+    if (!sk) return `<div class="cp-skill"><b>固有技なし</b></div>`;
+    return `<div class="cp-skill"><b>✨ ${sk.name}</b><small>回復 ${sk.cd}秒${compact ? "" : "・ボタン（PCはX）"}</small><p>${sk.effect}</p><p class="ctr">対処：${sk.counter}</p></div>`;
+  }
+
   // ---------- ロビー ----------
   const lobby = { charId: save.settings.charId, mates: save.settings.mates.slice(), team: save.settings.team, role: save.settings.role, difficulty: save.settings.difficulty, mateRoles: null };
   function otherRoles(role) { return D.ROLES.filter(r => r.id !== role).map(r => r.id); }
   function charCard(c, sel, extra) {
-    return `<button class="cgrid-btn ${sel ? "sel" : ""}" data-id="${c.id}" title="${c.name}"><img src="img/faces/${c.id}.png" alt=""><span>${c.name}</span><small>#${c.num}</small>${extra || ""}</button>`;
+    return `<button class="cgrid-btn ${sel ? "sel" : ""}" data-id="${c.id}" title="${c.name}${c.title ? "・" + c.title : ""}${c.skill ? "・" + c.skill.name : ""}"><img src="img/faces/${c.id}.png" alt=""><span>${c.name}</span><small>#${c.num}</small>${extra || ""}</button>`;
   }
   function buildLobby() {
     if (!lobby.mateRoles) lobby.mateRoles = otherRoles(lobby.role);
     const me = D.CHARS[D.charIndex(lobby.charId)];
-    $("#char-preview").innerHTML = `<img src="img/chars/${me.id}_front.png" alt="${me.name}"><div class="cp-body"><b>${me.name}</b> <small>#${me.num} ${me.en}</small><div class="cp-sub">${me.clan}${me.clanEn ? "・" : ""}${me.jutsu}・${me.weapon}</div><div class="cp-bio">${me.bio || me.gameRole || "公式資料に紹介文なし"}</div>${me.painted ? '<div class="cp-tag">手描きシートの4方向スプライト</div>' : '<div class="cp-tag">公式フィギュアの立ち絵（左右反転で向きを表す）</div>'}</div>`;
+    $("#char-preview").innerHTML = `<img src="img/chars/${me.id}_front.png" alt="${me.name}"><div class="cp-body"><b>${me.name}</b> <small>#${me.num} ${me.en}</small>
+      <div class="cp-title">${me.title || ""}<em>${me.roleLabel || ""}</em><span class="cp-tree">推奨系統：${treeLabel(me.tree)}</span></div>
+      <div class="cp-sub">${me.clan}${me.clanEn ? "・" : ""}${me.jutsu}・${me.weapon}</div>${statBars(me)}
+      ${me.painted ? '<div class="cp-tag">手描きシートの4方向スプライト</div>' : '<div class="cp-tag">公式フィギュアの立ち絵（左右反転で向きを表す）</div>'}</div>
+      <div class="cp-more">${skillHtml(me)}<div class="cp-plan"><b>勝ち筋</b><p>${me.winPlan || "—"}</p><b>逃げ方</b><p>${me.escapePlan || "—"}</p><small>能力値の合計は全員21。見た目の大きさと当たり判定は共通</small></div></div>`;
     $("#char-grid").innerHTML = D.CHARS.map(c => charCard(c, c.id === lobby.charId)).join("");
     $$("#char-grid .cgrid-btn").forEach(b => b.addEventListener("click", () => { lobby.charId = b.dataset.id; Snd.play("ui"); buildLobby(); }));
     $("#team-cards").innerHTML = D.TEAMS.map(t => `<button class="team-card ${t.id === lobby.team ? "sel" : ""}" data-team="${t.id}" style="--tc:${t.color}"><span class="shape">${t.shape}</span>${t.name}チーム<small>${t.id ? "東から出発" : "西から出発"}</small></button>`).join("");
@@ -203,6 +240,7 @@
   }
   function beginBriefing() {
     logIdx = 0; paused = false; resultTimer = 0;
+    clearGameOverlays();          // 再戦でも系統選択の記録（treePickChosen）を持ち越さない
     show("briefing");
     const mc = $("#briefing-map");
     const assign = {};
@@ -293,8 +331,12 @@
   };
   stickZone.addEventListener("pointerup", stickEnd); stickZone.addEventListener("pointercancel", stickEnd); stickZone.addEventListener("lostpointercapture", stickEnd);
 
-  // ボタン（印・目は引っぱって狙える）
+  // 自分の固有技（オフライン/オンライン共通）
+  const mySkill = () => (me && D.CHARS[me.char] && D.CHARS[me.char].skill) || null;
+  const skillReach = sk => { const P = (sk && sk.params) || {}; return P.len || P.range || P.dist || 5; };
+  // ボタン（印・目・固有技は引っぱって狙える。久遠の猫の目は長押しで白/黒の2択）
   const aimArrow = $("#aim-arrow");
+  const skillMenu = $("#skill-menu");
   $$("#btns .abtn").forEach(btn => {
     const action = btn.dataset.action;
     if (!action) return;
@@ -302,34 +344,41 @@
     btn.addEventListener("pointerdown", e => {
       Snd.unlock();
       btn.classList.add("press");
-      if (action === "shot" || action === "scan") {
-        drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, aiming: false };
+      if (action === "shot" || action === "scan" || action === "skill") {
+        drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, aiming: false, hold: 0, menu: false };
         try { btn.setPointerCapture(e.pointerId); } catch (err) { }
-      } else if (action === "ping") { togglePingMenu(); }
+        const sk = action === "skill" ? mySkill() : null;
+        if (sk && sk.kind === "cat_choice") {
+          drag.hold = setTimeout(() => { if (drag && !drag.aiming) { drag.menu = true; skillMenu.classList.add("on"); pingMenu.classList.remove("on"); Snd.play("ui"); } }, 420);
+        }
+      } else if (action === "ping") { togglePingMenu(); skillMenu.classList.remove("on"); }
       else { queue(action); }
       e.preventDefault();
     });
     btn.addEventListener("pointermove", e => {
-      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag || e.pointerId !== drag.id || drag.menu) return;
       const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
       if (Math.hypot(dx, dy) > 16) {
         drag.aiming = true; drag.angle = Math.atan2(dy, dx);
-        if (save.settings.swapSides) { /* 向きはそのまま */ }
+        if (drag.hold) { clearTimeout(drag.hold); drag.hold = 0; }
         aimArrow.classList.add("on");
         aimArrow.style.left = Render.sx(me.x) + "px"; aimArrow.style.top = (Render.sy(me.y) - Render.ppm * 0.8) + "px";
         aimArrow.style.transform = `rotate(${drag.angle}rad)`;
-        aimArrow.style.width = (action === "shot" ? R.shotRange : R.scanRange) * Render.ppm + "px";
+        aimArrow.style.width = (action === "shot" ? R.shotRange : action === "scan" ? R.scanRange : skillReach(mySkill())) * Render.ppm + "px";
       }
     });
     const end = e => {
       btn.classList.remove("press");
       if (!drag || e.pointerId !== drag.id) return;
+      if (drag.hold) clearTimeout(drag.hold);
       aimArrow.classList.remove("on");
-      queue(action, drag.aiming ? drag.angle : null);
-      drag = null;
+      const d = drag; drag = null;
+      if (d.menu) return;                      // 2択メニューが出ている（メニュー側で送る）
+      queue(action, d.aiming ? d.angle : null);
     };
     btn.addEventListener("pointerup", end); btn.addEventListener("pointercancel", end);
   });
+  $$("#skill-menu button").forEach(b => b.addEventListener("pointerdown", e => { queue("skill:" + b.dataset.eye); skillMenu.classList.remove("on"); e.preventDefault(); e.stopPropagation(); }));
   $("#btn-claim").addEventListener("pointerdown", e => { queue("claim"); e.preventDefault(); });
   $("#btn-pause").addEventListener("click", () => togglePause());
 
@@ -338,6 +387,11 @@
   pingMenu.innerHTML = D.PINGS.map(p => `<button data-ping="${p.id}">${p.icon} ${p.text}</button>`).join("");
   $$("#ping-menu button").forEach(b => b.addEventListener("pointerdown", e => { queue("ping:" + b.dataset.ping); pingMenu.classList.remove("on"); e.preventDefault(); e.stopPropagation(); }));
   function togglePingMenu() { pingMenu.classList.toggle("on"); }
+  // 数字キー：系統の選択待ちなら系統、そうでなければ合図
+  function digitKey(n) {
+    if (me && me.pendingLevel > 0) { chooseTree(TREE_LIST[n - 1]); return; }
+    queue("ping:" + ["here", "enemy", "flag"][n - 1]); pingMenu.classList.remove("on");
+  }
 
   // キーボード・マウス
   window.addEventListener("keydown", e => {
@@ -350,10 +404,12 @@
       case "Space": case "KeyJ": queue("shot"); e.preventDefault(); break;
       case "KeyF": queue("claim"); break;
       case "KeyC": case "ControlLeft": queue("crouch"); break;
+      case "KeyX": queue("skill"); break;
+      case "KeyZ": queue("ult"); break;
       case "KeyR": togglePingMenu(); break;
-      case "Digit1": queue("ping:here"); pingMenu.classList.remove("on"); break;
-      case "Digit2": queue("ping:enemy"); pingMenu.classList.remove("on"); break;
-      case "Digit3": queue("ping:flag"); pingMenu.classList.remove("on"); break;
+      case "Digit1": case "Numpad1": digitKey(1); break;
+      case "Digit2": case "Numpad2": digitKey(2); break;
+      case "Digit3": case "Numpad3": digitKey(3); break;
       case "Escape": togglePause(); break;
     }
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
@@ -373,12 +429,41 @@
   const hud = {
     time: $("#hud-time"), ot: $("#hud-ot"), compass: $("#hud-compass"), mates: $("#hud-mates"), camo: $("#hud-camo"), camoBar: $("#hud-camo-bar"),
     claim: $("#btn-claim"), toast: $("#toast"), count: $("#countdown"), ret: $("#hud-return"), crouch: $("#btn-crouch"),
+    hp: $("#hud-hp"), hpBar: $("#hud-hp-bar"), hpText: $("#hud-hp-text"), level: $("#hud-level"), levelText: $("#hud-level-text"), levelBar: $("#hud-level-bar"),
+    skill: $("#btn-skill"), skillLabel: $("#btn-skill-label"), ult: $("#btn-ult"), ultLabel: $("#btn-ult-label"),
+    exposed: $("#hud-exposed"), exposedSec: $("#hud-exposed-sec"), exposedBar: $("#hud-exposed-bar"), exposedSub: $("#hud-exposed-sub"),
+    heal: $("#hud-heal"), healText: $("#hud-heal-text"), healBar: $("#hud-heal-bar"), tree: $("#tree-pick"),
   };
+  const HP = R.hp || { byLevel: [100, 105, 110, 115, 120], xpThresholds: [0, 80, 200, 360, 560], exposeSec: 12, healSec: 3, healHp: 35, healSecFast: 2.3, healHpFast: 45, healRange: 1.5, minCamoHp: 30, pickSec: 5 };
+  // オフライン（生オブジェクト）とオンライン（スナップショット）の両方から同じ値を取る小関数
+  const chanOf = p => p.channel || (p.sk && p.sk.channel && p.sk.channel.kind) || null;
+  const modsOf = p => p.modKeys || (p.mods || []).map(m => m.k);
+  const hasMod = (p, k) => modsOf(p).includes(k);
+  const skillCdMaxOf = p => p.skillCdMax || (S.skillCdFor && p.bal ? S.skillCdFor(g, p) : 0) || (mySkill() ? mySkill().cd : 20) || 20;
+  const skOf = (p, k) => (p.sk && p.sk[k] != null) ? p.sk[k] : (p[k] || 0);
+  const perksOf = p => p.perks || {};
+  const ultOf = p => p.ult || { used: false, active: 0 };
+  const hasPerkOf = (p, tree, lv) => perksOf(p)[lv] === tree;
+  const recommendedTree = p => { const c = D.CHARS[p.char]; const t = c && c.tree; if (TREE_LIST.includes(t)) return t; return p.role === "vanguard" ? "影" : p.role === "scout" ? "技" : "護"; };
+  const hpCls = (hp, max) => { const r = max > 0 ? hp / max : 1; return r > 0.6 ? "" : r > 0.3 ? "mid" : "low"; };
+  const CHANNEL_NAMES = { dash: "白刃の構え", hawk_eye: "鷹の目（動くと解除）", tempo: "祝詞を演奏中（動くと解除）", zone_null_setup: "領域を設置中", smash: "振りかぶり", snipe: "狙撃の構え（動くと解除）", parry: "双龍円の構え", counter_stance: "無刀取りの構え（下がれる）", leap: "跳ぶ先を予告中" };
   let hudAcc = 0;
   const toasts = [];
   function toast(text, cls) { toasts.push({ text, cls: cls || "", t: 2.6 }); if (toasts.length > 3) toasts.shift(); renderToasts(); }
   function renderToasts() { hud.toast.innerHTML = toasts.map(t => `<div class="tst ${t.cls}">${t.text}</div>`).join(""); }
   function fmt(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+  let treePickLevel = 0, treePickChosen = 0;
+  function chooseTree(tree) { if (!me || !(me.pendingLevel > 0)) return; treePickChosen = me.pendingLevel; queue("tree:" + tree); Snd.play("pick"); hud.tree.classList.remove("on"); document.body.classList.remove("tree-pick-on"); }
+  function buildTreePick(level) {
+    treePickLevel = level;
+    const rec = recommendedTree(me);
+    const cls = { "影": "t-kage", "技": "t-waza", "護": "t-mamori" };
+    const sub = { "影": "潜入・擬態", "技": "見破り・印・固有技", "護": "耐久・手当・守り" };
+    hud.tree.innerHTML = `<div class="tp-head"><span>チーム Lv.<b>${level}</b>　系統を選ぶ</span><span class="tp-timer">あと <b id="tp-sec">${Math.ceil(me.pickT || HP.pickSec)}</b>秒で自動</span></div><div class="tp-cards">` +
+      TREE_LIST.map((t, i) => { const d = (D.TREES && D.TREES[t] && D.TREES[t][level]) || { name: "", effect: "" }; return `<button class="tp-card ${cls[t]} ${t === rec ? "rec" : ""}" data-tree="${t}"><span class="tp-key">${i + 1}</span><b>${t}</b><small>${sub[t]}</small><div class="tp-name">${d.name}</div><p>${d.effect}</p>${t === rec ? '<em class="tp-rec">おすすめ</em>' : ""}</button>`; }).join("") + `</div>`;
+    $$("#tree-pick .tp-card").forEach(b => b.addEventListener("pointerdown", e => { chooseTree(b.dataset.tree); e.preventDefault(); e.stopPropagation(); }));
+    hud.tree.classList.add("on"); document.body.classList.add("tree-pick-on");
+  }
   function updateHUD(dt) {
     // カウントダウン
     if (g.phase === "countdown") { hud.count.textContent = Math.ceil(g.timer); hud.count.classList.add("on"); }
@@ -392,15 +477,58 @@
     // 旗ボタン
     const inRange = S.dist(me, D.MAP.flag) <= R.flagRadius && me.returning <= 0;
     hud.claim.classList.toggle("on", inRange && g.phase === "playing");
-    hud.claim.classList.toggle("blocked", inRange && (me.camo > 0 || me.protect > 0));
+    hud.claim.classList.toggle("blocked", inRange && (me.camo > 0 || me.protect > 0 || me.exposed > 0));
     // クールダウン
     setCd("camo", me.camo ? 0 : me.camoCd / R.camoCooldown, me.camo > 0);
     setCd("scan", me.scanCd / (g.practice ? R.scanPractice : g.overtime ? R.scanOvertime : R.scanCooldown), false);
     setCd("shot", me.shotCd / R.shotCooldown, false);
     setCd("ping", me.pingCd / R.pingCooldown, false);
     hud.crouch.classList.toggle("active", me.crouch);
-    hud.ret.classList.toggle("on", me.returning > 0 || me.protect > 0);
-    if (me.returning > 0) hud.ret.textContent = `自陣で待機 ${Math.ceil(me.returning)}`; else if (me.protect > 0) hud.ret.textContent = `保護中 ${me.protect.toFixed(1)}`;
+    // 固有技：冷却リング・技名・構え/待ち受け中の表示
+    const sk = mySkill(), chan = chanOf(me);
+    const armed = !!chan || skOf(me, "kawarimi") > 0 || skOf(me, "poisonArmed") > 0 || hasMod(me, "eyeWhite") || hasMod(me, "eyeBlack") || hasMod(me, "tailwind") || hasMod(me, "foxdash") || hasMod(me, "visible");
+    setCd("skill", sk ? (me.skillCd || 0) / skillCdMaxOf(me) : 1, false);
+    hud.skill.classList.toggle("armed", armed);
+    const inNull = (g.objects || []).some(o => o.kind === "zone_null" && !o.dead && Math.hypot(o.x - me.x, o.y - me.y) <= (o.r || 3)) && !hasMod(me, "ownsNull");
+    hud.skill.classList.toggle("blocked", me.exposed > 0 || inNull);
+    // 奥義：Lv5の系統があり未使用のときだけ出す
+    const ult = ultOf(me), tree5 = perksOf(me)[5];
+    const ultOn = !!tree5 && !ult.used && g.phase === "playing";
+    hud.ult.classList.toggle("on", ultOn);
+    if (ultOn) {
+      hud.ultLabel.textContent = ultName(tree5);
+      const blocked = me.exposed > 0 || (tree5 === "影" && (me.camo !== 2 || S.dist(me, D.MAP.flag) < 3)) || (tree5 === "技" && !(me.skillCd > 0));
+      hud.ult.classList.toggle("blocked", blocked);
+      hud.ult.title = tree5 === "影" ? "擬態中・旗から3m以上で使える" : tree5 === "技" ? "固有技の回復待ちのときに使える" : "8秒間、4m以内の味方の被ダメージを12%減らす";
+    }
+    // 中央の状態表示（帰還待ち・保護・停止）
+    const stun = me.stunT > 0 && me.exposed <= 0;
+    hud.ret.classList.toggle("on", me.returning > 0 || me.protect > 0 || stun);
+    if (me.returning > 0) hud.ret.textContent = `自陣で待機 ${Math.ceil(me.returning)}`; else if (me.protect > 0) hud.ret.textContent = `保護中 ${me.protect.toFixed(1)}`; else if (stun) hud.ret.textContent = `動けない ${me.stunT.toFixed(1)}`;
+    // 露見中の帯（自分）
+    if (me.exposed > 0) {
+      hud.exposed.classList.add("on");
+      hud.exposedSec.textContent = Math.ceil(me.exposed);
+      hud.exposedBar.style.width = (Math.max(0, me.exposed) / HP.exposeSec * 100) + "%";
+      hud.exposedSub.textContent = me.healT > 0 ? `手当を受けている… ${me.healT.toFixed(1)}秒` : "";
+    } else hud.exposed.classList.remove("on");
+    // 手当の進捗（自分が味方を手当している）
+    let healing = null;
+    if (me.exposed <= 0 && me.returning <= 0 && g.phase === "playing") {
+      for (const q of g.players) if (q !== me && q.team === me.team && q.exposed > 0 && q.returning <= 0 && S.dist(me, q) <= HP.healRange) { healing = q; break; }
+    }
+    if (healing) {
+      const need = hasPerkOf(me, "護", 4) ? HP.healSecFast : HP.healSec;
+      const still = me.speedNow < 0.6;
+      hud.heal.classList.add("on");
+      hud.healText.textContent = still ? `${healing.name || D.CHARS[healing.char].name}を手当中 ${Math.min(need, healing.healT || 0).toFixed(1)}／${need}秒` : `止まると${healing.name || D.CHARS[healing.char].name}の手当が進む`;
+      hud.healBar.style.width = (Math.min(1, (healing.healT || 0) / need) * 100) + "%";
+    } else hud.heal.classList.remove("on");
+    // 系統の選択（レベルアップから5秒。自動選択・選択済みで閉じる）
+    if (me.pendingLevel > 0 && me.pendingLevel !== treePickChosen && g.phase !== "finished") {
+      if (treePickLevel !== me.pendingLevel || !hud.tree.classList.contains("on")) buildTreePick(me.pendingLevel);
+      const s = $("#tp-sec"); if (s) s.textContent = Math.max(0, Math.ceil(me.pickT || 0));
+    } else if (hud.tree.classList.contains("on")) { hud.tree.classList.remove("on"); document.body.classList.remove("tree-pick-on"); treePickLevel = 0; }
     hudAcc += dt;
     for (const t of toasts) t.t -= dt;
     if (toasts.length && toasts[0].t <= 0) { toasts.shift(); renderToasts(); }
@@ -409,11 +537,23 @@
     hud.time.textContent = g.noTimer ? "練習" : fmt(g.time);
     hud.time.classList.toggle("warn", !g.noTimer && g.time <= 10);
     hud.ot.classList.toggle("on", g.overtime);
-    // 味方
+    // 自分のHP
+    const hpMax = me.hpMax || HP.byLevel[0], hpNow = Math.max(0, Math.round(me.hp != null ? me.hp : hpMax));
+    hud.hpBar.style.width = (hpNow / hpMax * 100) + "%";
+    hud.hpText.textContent = `HP ${hpNow}/${hpMax}`;
+    hud.hp.className = "hud-hp " + hpCls(hpNow, hpMax);
+    // チームのレベル・経験値
+    const lv = (g.level && g.level[me.team]) || 1, xp = (g.xp && g.xp[me.team]) || 0, th = HP.xpThresholds;
+    if (lv >= 5) { hud.levelText.textContent = `Lv.5 MAX`; hud.levelBar.style.width = "100%"; hud.level.classList.add("max"); }
+    else { const lo = th[lv - 1] || 0, hi = th[lv]; hud.levelText.textContent = `Lv.${lv} ${Math.floor(xp)}/${hi}`; hud.levelBar.style.width = (Math.max(0, Math.min(1, (xp - lo) / (hi - lo))) * 100) + "%"; hud.level.classList.remove("max"); }
+    hud.skillLabel.textContent = shortSkillName(sk && sk.name);
+    hud.skill.title = sk ? `${sk.name}（回復${sk.cd}秒）${sk.effect}` : "固有技なし";
+    // 味方（HPバー・露見/手当/擬態/帰還）
     hud.mates.innerHTML = g.players.filter(p => p.team === me.team).map(p => {
       const c = D.CHARS[p.char]; const r = D.ROLES.find(x => x.id === p.role);
-      const st = p.returning > 0 ? `<em>帰還 ${Math.ceil(p.returning)}</em>` : p.camo === 2 ? "<em>擬態中</em>" : p.marks ? `<em class="mk">印${p.marks}</em>` : "";
-      return `<div class="mate-chip ${p === me ? "me" : ""}"><img src="img/faces/${c.id}.png" alt=""><span>${p === me ? "あなた" : c.name}<small>${r ? r.name : ""}</small></span>${st}</div>`;
+      const pm = p.hpMax || HP.byLevel[0], ph = Math.max(0, Math.round(p.hp != null ? p.hp : pm));
+      const st = p.returning > 0 ? `<em>帰還 ${Math.ceil(p.returning)}</em>` : p.exposed > 0 ? (p.healT > 0 ? `<em class="hl">手当中</em>` : `<em class="mk">露見 ${Math.ceil(p.exposed)}</em>`) : p.camo === 2 ? "<em>擬態中</em>" : ((p.ult && p.ult.active > 0) || p.ultActive > 0) ? `<em>奥義</em>` : chanOf(p) ? `<em>構え</em>` : "";
+      return `<div class="mate-chip ${p === me ? "me" : ""} ${p.exposed > 0 ? "exposed" : ""}"><img src="img/faces/${c.id}.png" alt=""><span>${p === me ? "あなた" : c.name}<small>${r ? r.name : ""}</small><i class="hpb ${hpCls(ph, pm)}"><b style="width:${ph / pm * 100}%"></b></i></span>${st}</div>`;
     }).join("");
     // 擬態の状態
     let text = "", bar = -1, cls = "";
@@ -421,8 +561,12 @@
     else if (me.camo === 1) { text = "布を広げている…"; bar = 1 - me.camoEnter / R.camoEnter; cls = "ok"; }
     else {
       const z = S.zoneAt(me.x, me.y);
-      if (me.protect > 0) text = D.CAMO_REASONS.protect;
+      if (me.exposed > 0) { text = D.CAMO_REASONS.exposed || "露見中は使えない"; cls = "warn"; }
+      else if (me.protect > 0) text = D.CAMO_REASONS.protect;
       else if (me.reveal > 0) { text = D.CAMO_REASONS.reveal; cls = "warn"; }
+      else if (hpNow < HP.minCamoHp) { text = (D.CAMO_REASONS.hp || "HPが{n}未満（手当か自陣で回復）").replace("{n}", HP.minCamoHp); cls = "warn"; }
+      else if (chan) { text = (CHANNEL_NAMES[chan] || "技の最中") + "は使えない"; cls = "warn"; }
+      else if (hasMod(me, "noCamo")) { text = D.CAMO_REASONS.noCamo || "鬼灯の効果中は使えない"; cls = "warn"; }
       else if (S.dist(me, D.MAP.flag) <= R.flagNoCamo) text = D.CAMO_REASONS.flag;
       else if (!z) text = D.CAMO_REASONS.zone;
       else if (me.camoCd > 0) text = D.CAMO_REASONS.cd.replace("{n}", Math.ceil(me.camoCd));
@@ -445,19 +589,57 @@
   function consumeLog() {
     while (logIdx < g.log.length) {
       const e = g.log[logIdx++];
-      const who = id => { const p = g.players.find(q => q.id === id); return p ? (p === me ? "あなた" : p.name) : ""; };
+      const who = id => { const p = g.players.find(q => q.id === id); return p ? (p === me ? "あなた" : (p.name || (p.char != null && D.CHARS[p.char] ? D.CHARS[p.char].name : "敵"))) : "敵"; };
       switch (e.type) {
         case "found":
           if (e.team === me.team) { toast(`${who(e.id)}を見つけた！`, "good"); Snd.play("found"); }
           else if (e.id === me.id) { toast("見つかった！ 3秒間、敵に輪郭が見える", "bad"); Snd.play("warn"); }
           break;
-        case "hit":
-          if (e.team === me.team) { toast(e.marks >= 2 ? `${who(e.id)}を帰還させた！` : `${who(e.id)}に命中（印1）`, "good"); }
-          else if (e.id === me.id) { toast(e.marks >= 2 ? "2回目の印… 自陣へ帰還" : "印を付けられた（8秒以内にもう1回で帰還）", "bad"); }
-          Snd.play("hit");
+        case "hit": {
+          // HP制：印が当たるとHPが減る（基本34・能力値で増減）。e.team は投げた側
+          const dmg = e.dmg != null ? e.dmg : HP.baseDamage || 34;
+          if (e.id === me.id) { toast(`-${dmg} HP残り${Math.max(0, Math.round(e.hp != null ? e.hp : me.hp))}`, "bad"); Snd.play("hurt"); }
+          else if (e.team === me.team) { toast(`${who(e.id)}に命中（-${dmg}）`, "good"); Snd.play("hit"); }
+          else if (e.by === me.id) { Snd.play("hit"); }
+          else Snd.play("hit");
+          break;
+        }
+        case "expose":
+          // e.team は露見した側
+          if (e.id === me.id) { toast("露見… 味方の手当（1.5m・3秒）か自陣へ", "bad"); Snd.play("expose"); }
+          else if (e.team !== me.team) { toast(`${who(e.id)}を露見させた！`, "good"); Snd.play("exposeEnemy"); }
+          else { toast(`${who(e.id)}が露見。そばで3秒止まると手当`, "bad"); Snd.play("warn"); }
+          break;
+        case "recover":
+          if (e.id === me.id) { toast(e.how === "home" ? `復帰（自陣で全回復）` : `復帰（HP${Math.round(me.hp || HP.healHp)}）`, "good"); Snd.play("heal"); }
+          else if (e.team === me.team) toast(`${who(e.id)}が復帰`, "good");
+          break;
+        case "healed":
+          if (e.by === me.id) { toast(`${who(e.id)}を手当した`, "good"); Snd.play("heal"); }
+          else if (e.id === me.id) { toast(`${who(e.by)}に手当してもらった`, "good"); }
+          break;
+        case "levelup":
+          if (e.team === me.team) { toast(`チーム Lv.${e.level}！ 系統を選ぼう（5秒）`, "info"); Snd.play("levelup"); }
+          else { toast(`相手チームが Lv.${e.level} に`, "bad"); Snd.play("levelupEnemy"); }
+          break;
+        case "perk":
+          if (e.team === me.team) { const d = D.TREES && D.TREES[e.tree] && D.TREES[e.tree][e.level]; toast(`${who(e.id)}：${e.tree}Lv${e.level} ${d ? d.name : ""}`, "info"); }
+          break;
+        case "ult":
+          if (e.team === me.team) { toast(`${who(e.id)}：奥義・${ultName(e.tree)}！`, "good"); Snd.play("ult"); }
+          else { toast(`敵の奥義・${ultName(e.tree)}！`, "bad"); Snd.play("ult"); }
+          break;
+        case "skill":
+          // 敵の技は見えた効果だけ（トーストにしない）
+          if (e.team === me.team) { toast(`${who(e.id)}：${e.name || "固有技"}`, e.id === me.id ? "good" : "info"); if (e.id === me.id) Snd.play("skill"); }
+          break;
+        case "countered":
+          if (e.by === me.id) { toast(`${who(e.id)}の印を無刀取り！`, "good"); Snd.play("found"); }
+          else if (e.id === me.id) { toast("無刀取りで止められた（0.8秒）", "bad"); Snd.play("warn"); }
+          else if (e.team === me.team) toast(`${who(e.by)}が無刀取り`, "good");
           break;
         case "return":
-          if (e.id === me.id) Snd.play("returnHome");
+          if (e.id === me.id) { toast("自陣へ帰還（全回復）", "info"); Snd.play("returnHome"); }
           else if (e.team === me.team) toast(`${who(e.id)}が帰還した`, "bad");
           break;
         case "ping":
@@ -479,6 +661,9 @@
       else if (ef.type === "hide" && S.dist(ef, me) < 10) Snd.play("hide");
       else if (ef.type === "unhide" && S.dist(ef, me) < 10) Snd.play("unhide");
       else if (ef.type === "miss" && ef.owner === me.id) Snd.play("miss");
+      else if (ef.type === "skill" && ef.team !== me.team && S.dist(ef, me) < 12) Snd.play("skillEnemy");
+      else if ((ef.type === "burst" || ef.type === "smash" || ef.type === "wall_up") && S.dist(ef, me) < 14) Snd.play("hit");
+      else if (ef.type === "parry" && S.dist(ef, me) < 12) Snd.play("found");
     }
     // 足音（自分と、聞こえる範囲の他者）
     footAcc += S.TICK;
@@ -502,7 +687,8 @@
   $("#btn-resume").addEventListener("click", () => { if (mode === "online") $("#pause").classList.remove("on"); else togglePause(); });
   $("#btn-pause-settings").addEventListener("click", () => { buildSettings(); $("#settings-panel").classList.add("on"); });
   $("#btn-quit").addEventListener("click", () => { paused = false; $("#pause").classList.remove("on"); if (mode === "online") { leaveOnline(); show("online"); return; } endMatch(); show("title"); });
-  function endMatch() { stopLoop(); g = null; me = null; tutorial = null; input.actions = []; input.x = input.y = 0; document.body.classList.remove("tutorial"); pingMenu.classList.remove("on"); }
+  function clearGameOverlays() { pingMenu.classList.remove("on"); skillMenu.classList.remove("on"); hud.tree.classList.remove("on"); document.body.classList.remove("tree-pick-on"); hud.exposed.classList.remove("on"); hud.heal.classList.remove("on"); hud.ult.classList.remove("on"); treePickLevel = 0; treePickChosen = 0; }
+  function endMatch() { stopLoop(); g = null; me = null; tutorial = null; input.actions = []; input.x = input.y = 0; document.body.classList.remove("tutorial"); clearGameOverlays(); }
 
   // ---------- 結果 ----------
   function showResult() {
@@ -511,7 +697,8 @@
     const st = save.stats; st.matches++;
     if (timeout) st.ties++; else if (tie) { st.ties++; } else if (win) st.wins++; else st.losses++;
     const rec = charRec(D.CHARS[me.char].id); rec.plays++; if (win && !timeout) rec.wins++;
-    for (const p of g.players) if (p === me) { st.hides += p.stats.hides; st.reveals += p.stats.reveals; st.hits += p.stats.hits; st.returns += p.stats.returns; }
+    const n0 = v => (typeof v === "number" && isFinite(v)) ? v : 0;
+    for (const p of g.players) if (p === me) { const s = p.stats || {}; st.hides += n0(s.hides); st.reveals += n0(s.reveals); st.hits += n0(s.hits); st.returns += n0(s.returns); st.hp0 += n0(s.hp0); st.heals += n0(s.heals); st.skills += n0(s.skills); }
     if (g.claimants.includes(me.id)) { st.claims++; if (!st.bestClaim || g.elapsed < st.bestClaim) st.bestClaim = g.elapsed; }
     persist();
     const title = timeout ? "引き分け（時間切れ）" : tie ? "同着・両チーム優勝" : `${D.TEAMS[g.winner[0]].shape} ${D.TEAMS[g.winner[0]].name}チームの優勝`;
@@ -525,8 +712,9 @@
     const sc = D.CHARS[speaker.char];
     $("#result-hero").innerHTML = `<img src="img/chars/${sc.id}_${sc.painted ? (win || tie ? "happy" : "surprised") : "front"}.png" alt=""><div class="bubble"><b>${sc.name}</b><br>${line}</div>`;
     $("#result-sub").textContent = timeout ? `${R.duration + R.overtime}秒、どちらも旗を掴めなかった` : `${claimers.map(p => (p === me ? "あなた" : p.name) + "（" + D.TEAMS[p.team].name + "）").join("・")}が ${g.elapsed.toFixed(1)}秒 で旗を掴んだ${g.overtime ? "（延長）" : ""}`;
-    const rows = g.players.filter(p => p.team === me.team).map(p => { const r = D.ROLES.find(x => x.id === p.role); return `<tr><td>${p === me ? "あなた" : p.name}<small>${r.name}</small></td><td>${p.stats.hides}</td><td>${p.stats.reveals}</td><td>${p.stats.hits}</td><td>${p.stats.pings}</td><td>${p.stats.returns}</td></tr>`; });
-    $("#result-table").innerHTML = `<tr><th>味方</th><th>擬態</th><th>見破り</th><th>命中</th><th>合図</th><th>帰還</th></tr>${rows.join("")}`;
+    const rows = g.players.filter(p => p.team === me.team).map(p => { const r = D.ROLES.find(x => x.id === p.role), s = p.stats || {}; return `<tr><td>${p === me ? "あなた" : p.name}<small>${r ? r.name : ""}</small></td><td>${n0(s.hides)}</td><td>${n0(s.reveals)}</td><td>${n0(s.hits)}</td><td>${Math.round(n0(s.damage))}</td><td>${n0(s.hp0)}</td><td>${n0(s.heals)}</td><td>${n0(s.skills)}</td><td>${n0(s.pings)}</td></tr>`; });
+    const lvA = (g.level && g.level[me.team]) || 1, lvB = (g.level && g.level[1 - me.team]) || 1;
+    $("#result-table").innerHTML = `<tr><td colspan="9" class="result-level">最終レベル：${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name} Lv.${lvA}（${D.TEAMS[1 - me.team].shape} ${D.TEAMS[1 - me.team].name} Lv.${lvB}）</td></tr><tr><th>味方</th><th>擬態</th><th>見破り</th><th>命中</th><th>与ダメ</th><th>被露見</th><th>手当</th><th>固有技</th><th>合図</th></tr>${rows.join("")}`;
     Snd.stopAmbient();
   }
   $("#btn-rematch").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", false); return; } S.resetForRematch(g, false); me = g.players.find(p => p.id === "me"); beginBriefing(); });
@@ -546,10 +734,15 @@
       const rec = save.chars[c.id] || { plays: 0, wins: 0 };
       const unlocked = rec.wins > 0;
       const lines = c.lines.win;
+      const sk = c.skill;
       return `<div class="zcard"><div class="zimg"><img src="img/art/${c.id}.jpg" alt="${c.name}"><img class="zsprite" src="img/chars/${c.id}_front.png" alt=""></div>
         <div class="zbody"><h3>${c.name} <small>#${c.num} ${c.en}</small></h3>
+        ${c.title ? `<div class="cp-title">${c.title}<em>${c.roleLabel || ""}</em><span class="cp-tree">推奨系統：${treeLabel(c.tree)}</span></div>` : ""}
         <dl><dt>公式資料</dt><dd>${c.clan}${c.clanEn ? "（" + c.clanEn + "）" : ""}・${c.jutsu}・${c.weapon}・誕生日 ${c.birthday}</dd>
         <dt>紹介</dt><dd>${c.bio || c.bioEn || "公式資料に紹介文なし"}</dd>
+        <dt>能力値（本作のゲーム用創作・合計21）</dt><dd>${statBars(c, true)}</dd>
+        <dt>固有技</dt><dd class="zskill">${sk ? `<b>✨ ${sk.name}</b>（回復${sk.cd}秒）${sk.effect}<br><small>対処：${sk.counter}</small>` : "なし"}</dd>
+        ${c.winPlan ? `<dt>勝ち筋／逃げ方</dt><dd>${c.winPlan}<br>${c.escapePlan || ""}</dd>` : ""}
         ${c.gameRole ? `<dt>この作品での役割</dt><dd>${c.gameRole}</dd>` : ""}
         <dt>ひとこと（優勝すると開く）</dt><dd>${unlocked ? lines.map(l => "「" + l + "」").join("<br>") : "？？？（" + c.name + "で優勝すると開く）"}</dd>
         <dt>戦績</dt><dd>${rec.plays}試合・${rec.wins}優勝</dd></dl>
@@ -637,14 +830,16 @@
           else idle(p);
           break;
         }
-        case 3: { // 回廊を往復する（撃ち返さない）
-          if (T.sub === 0) { if (p.camo) S.setInput(p, { x: 0, y: 0, actions: ["camo"] }); p.reveal = 0; T.sub = 1; T.dir = 1; break; }
+        case 3: { // 回廊を往復する（撃ち返さない）。HP満タンから3発で露見する
+          if (T.sub === 0) { if (p.camo) S.setInput(p, { x: 0, y: 0, actions: ["camo"] }); p.reveal = 0; p.hp = p.hpMax; p.exposed = 0; p.healT = 0; T.sub = 1; T.dir = 1; break; }
+          if (p.exposed > 0) { idle(p); break; }
           const tx = T.dir > 0 ? 28 : 21;
           if (walkTo(p, tx, 8.5, 0.55)) T.dir = -T.dir;
           break;
         }
         case 4: { // 旗の東で見張り。咲耶が見えたらそちらへ気を取られる
-          if (T.sub === 0) { p.x = 36.2; p.y = 24; p.angle = Math.PI; p.marks = 0; p.markTime = 0; p.returning = 0; p.protect = 0; T.sub = 1; }
+          if (T.sub === 0) { p.x = 36.2; p.y = 24; p.angle = Math.PI; p.marks = 0; p.markTime = 0; p.returning = 0; p.protect = 0; p.hp = p.hpMax; p.exposed = 0; p.healT = 0; p.reveal = 0; p.stunT = 0; T.sub = 1; }
+          if (p.exposed > 0) { idle(p); break; }
           const seeS = S.canSee(p, sakuya) && sakuya.returning <= 0;
           if (seeS) {
             const ang = Math.atan2(sakuya.y - p.y, sakuya.x - p.x);
@@ -694,17 +889,20 @@
           if (jin.reveal > 0) { next(); }
           break;
         case 3:
-          if (jin.stats.returns > 0 || jin.returning > 0) { next(); }
+          // 刃が露見したら合格（HP0＝12秒の露見）
+          if (jin.exposed > 0 || jin.stats.hp0 > 0) { next(); }
+          else if (jin.hp < jin.hpMax && T.lastHp !== jin.hp) { T.lastHp = jin.hp; T.msg = `命中！ 刃のHP ${Math.max(0, Math.round(jin.hp))}。あと${Math.max(1, Math.ceil(jin.hp / Math.max(1, HP.baseDamage || 34)))}発で露見`; renderPanel(); }
           break;
         case 4:
           setMarker(D.MAP.flag.x, D.MAP.flag.y);
-          if (me.returning > 0 && !T.warned) { T.warned = true; T.msg = "帰還した。もう一度、咲耶が気を引いている間に旗へ"; renderPanel(); }
+          if (me.exposed > 0 && !T.warned) { T.warned = true; T.msg = "HPが0で露見した。自陣に戻るか12秒たつと回復。もう一度、咲耶が気を引いている間に旗へ"; renderPanel(); }
+          else if (me.returning > 0 && !T.warned2) { T.warned2 = true; T.msg = "自陣に帰還して全回復。咲耶が気を引いている間に、もう一度旗へ"; renderPanel(); }
           if (g.phase === "finished") { T.done = true; }
           break;
       }
     };
     function next() {
-      T.step++; T.sub = 0; T.t = 0; T.msg = ""; T.warned = false;
+      T.step++; T.sub = 0; T.t = 0; T.msg = ""; T.warned = false; T.warned2 = false; T.lastHp = null;
       Snd.play("found");
       if (T.step >= stepDefs.length) { T.done = true; return; }
       renderPanel();
@@ -774,7 +972,7 @@
   }
   function endOnlineMatch() {
     stopLoop(); g = null; me = null; mode = "match"; online.byId = new Map(); online.endMsg = null; input.actions = []; input.x = input.y = 0;
-    document.body.classList.remove("online-pause"); $("#pause").classList.remove("on"); pingMenu.classList.remove("on"); Snd.stopAmbient();
+    document.body.classList.remove("online-pause"); $("#pause").classList.remove("on"); clearGameOverlays(); Snd.stopAmbient();
   }
   function buildRoom() {
     const L = online.lobby; if (!L) return;
@@ -824,24 +1022,33 @@
   // 試合開始（サーバーから）
   function startOnlineMatch(m) {
     mode = "online"; tutorial = null; online.lobby = m.lobby || online.lobby; online.endMsg = null; online.byId = new Map();
-    g = { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false, winner: [], claimants: [], reason: "", players: [], shots: [], effects: [], log: [], sounds: [], practice: false, noTimer: false, difficulty: D.DIFFICULTY[(online.lobby && online.lobby.difficulty) || "normal"] };
+    g = { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false, winner: [], claimants: [], reason: "", players: [], shots: [], effects: [], log: [], sounds: [], objects: [], xp: [0, 0], level: [1, 1], practice: false, noTimer: false, difficulty: D.DIFFICULTY[(online.lobby && online.lobby.difficulty) || "normal"] };
     for (const sp of m.players) {
-      const p = { id: sp.id, team: sp.team, char: sp.char, role: sp.role, name: sp.name, bot: sp.bot, x: sp.team ? 60 : 4, y: 24, px: sp.team ? 60 : 4, py: 24, angle: sp.team ? Math.PI : 0, camo: 0, camoEnter: 0, camoTime: 0, camoCd: 0, camoPattern: null, reveal: 0, marks: 0, protect: 0, returning: 0, speedNow: 0, crouch: false, scanCd: 0, shotCd: 0, pingCd: 0, castleTime: 0, pulse: false, emote: null, lastSeen: null, stats: { hides: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0 }, input: { x: 0, y: 0, actions: [], angle: null } };
+      const p = Object.assign(onlinePlayerDefaults(), { id: sp.id, team: sp.team, char: sp.char, role: sp.role, name: sp.name, bot: sp.bot, x: sp.team ? 60 : 4, y: 24, px: sp.team ? 60 : 4, py: 24, angle: sp.team ? Math.PI : 0 });
       online.byId.set(p.id, p); g.players.push(p);
     }
     me = online.byId.get(Net.you.id) || g.players[0];
     logIdx = 0; paused = false; resultTimer = 0; toasts.length = 0; renderToasts();
     beginBriefing();
   }
+  // オンラインの空プレイヤー雛形（スナップショットが来る前に HUD・描画が読んでも落ちない値）
+  function onlinePlayerDefaults() {
+    return { camo: 0, camoEnter: 0, camoTime: 0, camoCd: 0, camoPattern: null, reveal: 0, marks: 0, protect: 0, returning: 0, speedNow: 0, crouch: false, scanCd: 0, shotCd: 0, pingCd: 0, castleTime: 0, pulse: false, emote: null, lastSeen: null,
+      hp: HP.byLevel[0], hpMax: HP.byLevel[0], exposed: 0, healT: 0, stunT: 0, channel: null, modKeys: [], ultActive: 0, skillCd: 0, skillCdMax: 20, perks: {}, pendingLevel: 0, pickT: 0, ult: { used: false, active: 0 }, kawarimi: 0, poisonArmed: 0, shield: 0, sk: {}, mods: [],
+      stats: { hides: 0, reveals: 0, hits: 0, pings: 0, returns: 0, claims: 0, damage: 0, taken: 0, hp0: 0, heals: 0, skills: 0, xp: 0 }, input: { x: 0, y: 0, actions: [], angle: null } };
+  }
   function applySnapshot(m) {
     if (!g || mode !== "online") return;
     online.snapAt = performance.now();
     Object.assign(g, { phase: m.phase, timer: m.timer, time: m.time, elapsed: m.elapsed, tick: m.tick, overtime: m.overtime, winner: m.winner, claimants: m.claimants, reason: m.reason });
+    if (Array.isArray(m.objects)) g.objects = m.objects;
+    if (Array.isArray(m.xp)) g.xp = m.xp;
+    if (Array.isArray(m.level)) g.level = m.level;
     const seen = new Set();
     for (const sp of m.players) {
       seen.add(sp.id);
       let p = online.byId.get(sp.id);
-      if (!p) { p = Object.assign({ px: sp.x, py: sp.y, stats: {}, input: { x: 0, y: 0, actions: [], angle: null } }, sp); online.byId.set(sp.id, p); g.players.push(p); continue; }
+      if (!p) { p = Object.assign(onlinePlayerDefaults(), { px: sp.x, py: sp.y }, sp); online.byId.set(sp.id, p); g.players.push(p); continue; }
       if (!g.players.includes(p)) g.players.push(p);
       if (p === me) {
         const sx = sp.x, sy = sp.y, keepAngle = p.angle;
@@ -851,6 +1058,9 @@
         online.px = p.x; online.py = p.y;
       } else {
         const ox = p.x, oy = p.y;
+        // 布だけ／気配だけの敵は HP・露見・技の情報を持たない＝前回の値を引きずらない。見え方の印も毎回付け直す
+        if (sp.cloth || sp.ghost || sp.pulseOnly) Object.assign(p, { exposed: 0, healT: 0, stunT: 0, channel: null, modKeys: [], ultActive: 0, emote: null });
+        p.cloth = !!sp.cloth; p.ghost = !!sp.ghost; p.pulseOnly = !!sp.pulseOnly; p.trackDir = null;
         Object.assign(p, sp);
         if (sp.x != null) { p.px = ox != null ? ox : sp.x; p.py = oy != null ? oy : sp.y; }
       }
@@ -868,12 +1078,22 @@
     if (angle != null) me.angle = angle; else if (Math.hypot(x, y) > 0.1) me.angle = Math.atan2(y, x);
   }
   // 自分の移動だけ先読み（サーバーの位置と大きくずれたら合わせる）
+  const FREEZE_CHANNELS = ["dash", "smash", "leap"];   // 鷹の目・狙撃・疾拍子は動くと解ける（止まらない）
+  const SLOW_CHANNELS = { parry: 0.5, zone_null_setup: 0.5, counter_stance: 0.7 };     // sim.js の channel.speedMul と同じ値
   function predictSelf(dt) {
     if (!me || !online.pending || g.phase !== "playing" || me.returning > 0 || me.camo === 1) return;
+    const chan = chanOf(me);
+    if (me.stunT > 0 || FREEZE_CHANNELS.includes(chan)) return;      // 停止中・構え中はサーバーも動かさない
     const { x, y } = online.pending;
     if (Math.hypot(x, y) < 0.1) return;
-    const base = me.camo === 2 ? R.camoSpeed : me.crouch ? R.crouchSpeed : R.speed;
-    const sp = base * (me.slow > 0 ? R.slowFactor : 1);
+    // 能力値の係数はサーバーと同じ balanceFor から（オンラインの自分には p.bal が無い）
+    const bal = (S.balanceFor && S.balanceFor(me.char)) || { speedMul: 1, camoSpeedMul: 1, slowFactor: R.slowFactor, exposeMove: HP.exposeMove || 0.7 };
+    let base = me.camo === 2 ? R.camoSpeed * bal.camoSpeedMul : me.crouch ? R.crouchSpeed * bal.speedMul * (hasPerkOf(me, "影", 2) ? 1.1 : 1) : R.speed * bal.speedMul;
+    if (me.camo === 2 && (hasMod(me, "camoFast") || (ultOf(me).active > 0 && perksOf(me)[5] === "影"))) base = R.speed * 0.7;
+    let sp = base * (me.slow > 0 ? bal.slowFactor : 1) * (hasMod(me, "tailwind") ? 1.15 : 1);
+    if (hasMod(me, "eyeBlack") && me.camo === 2 && bal.stats && bal.stats.camo < 5) sp *= (bal.camoSpeedMul + 0.1) / bal.camoSpeedMul;   // 猫の目・黒目（擬態+1）
+    if (me.exposed > 0) sp = R.speed * bal.speedMul * bal.exposeMove;   // 露見：本人の速さの70%
+    if (chan && SLOW_CHANNELS[chan]) sp *= SLOW_CHANNELS[chan];
     const nx = me.x + x * sp * dt, ny = me.y + y * sp * dt;
     me.px = me.x; me.py = me.y;
     if (!S.blocked(nx, me.y, R.bodyRadius, me.team)) me.x = nx;
@@ -910,7 +1130,9 @@
     if (!g || mode !== "online") return;
     const r = m.result;
     Object.assign(g, { phase: "finished", winner: r.winner, claimants: r.claimants, reason: r.reason, elapsed: r.elapsed, overtime: r.overtime });
-    for (const rp of r.players) { let p = online.byId.get(rp.id); if (!p) { p = Object.assign({ x: 0, y: 0, px: 0, py: 0 }, rp); online.byId.set(p.id, p); } Object.assign(p, { team: rp.team, char: rp.char, role: rp.role, name: rp.name, stats: rp.stats }); if (!g.players.includes(p)) g.players.push(p); }
+    if (Array.isArray(r.level)) g.level = r.level;
+    if (Array.isArray(r.xp)) g.xp = r.xp;
+    for (const rp of r.players) { let p = online.byId.get(rp.id); if (!p) { p = Object.assign(onlinePlayerDefaults(), { x: 0, y: 0, px: 0, py: 0 }, rp); online.byId.set(p.id, p); } Object.assign(p, { team: rp.team, char: rp.char, role: rp.role, name: rp.name, stats: rp.stats || p.stats }); if (!g.players.includes(p)) g.players.push(p); }
     online.endMsg = m; resultTimer = 0;
     for (const p of g.players) p.emote = { type: g.winner.includes(p.team) ? "happy" : "surprised", t: 10 };
   }
@@ -920,7 +1142,8 @@
   }
 
   // 検証用の窓口（機械検査・自動テスト用。ゲーム内では使わない）
-  window.__ninsai = { get g() { return g; }, get me() { return me; }, get tutorial() { return tutorial; }, get mode() { return mode; }, get online() { return online; }, queue, input, show, startMatch, startTutorial, onlineCreate, onlineJoin, save: () => save };
+  window.__ninsai = { get g() { return g; }, get me() { return me; }, get tutorial() { return tutorial; }, get mode() { return mode; }, get online() { return online; }, queue, input, show, startMatch, startTutorial, onlineCreate, onlineJoin, save: () => save,
+    updateHUD, consumeLog, showResult, buildLobby, buildZukan, applyInput, applySnapshot, startOnlineMatch, onlineEnd, chooseTree, get hud() { return hud; } };
 
   // ---------- 起動 ----------
   Render.loadAssets().then(() => { document.body.classList.add("ready"); });

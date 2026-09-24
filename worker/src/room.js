@@ -9,6 +9,10 @@ const IDLE_MS = 30 * 60 * 1000;       // 誰もいない部屋を消すまで
 const MAX_HUMANS = 6;
 const ROLES = ["vanguard", "scout", "decoy"];
 
+// 効果（g.effects）のうち観戦者へ送る項目。HP・レベル・固有技で増えた項目（dmg/hp/level/tree/tx/ty/r/decoy/kind/owner）も通す
+const EFFECT_KEYS = ["id", "type", "x", "y", "life", "maxLife", "team", "angle", "owner", "target", "text", "icon", "kind", "marks",
+  "dmg", "hp", "level", "tree", "tx", "ty", "r", "decoy", "mark"];
+function pubEffect(e) { const o = {}; for (const k of EFFECT_KEYS) if (e[k] !== undefined) o[k] = e[k]; return o; }
 function rid(n = 8) { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, x => x.toString(16).padStart(2, "0")).join(""); }
 function pickChar(exclude) {
   const all = DATA.CHARS.map((c, i) => i).filter(i => !exclude.includes(i));
@@ -130,7 +134,8 @@ export class Room {
     const gp = this.g && this.g.players.find(x => x.id === pid);
     if (gp) {
       gp.connected = false;
-      if (explicit) this.handOverToBot(gp); else setTimeout(() => { if (gp.connected === false && !gp.bot) this.handOverToBot(gp); }, GRACE_MS);
+      // 猶予が切れた時点の試合の選手を id で引き直す（途中で再戦すると選手オブジェクトが作り直されるため）
+      if (explicit) this.handOverToBot(gp); else setTimeout(() => { const cur = this.g && this.g.players.find(x => x.id === pid); if (cur && cur.connected === false && !cur.bot) this.handOverToBot(cur); }, GRACE_MS);
     }
     if (explicit || L.phase === "lobby") {
       L.players = L.players.filter(x => x.id !== pid || (!explicit && this.g));
@@ -183,7 +188,8 @@ export class Room {
     if (g.phase === "finished") {
       if (!this.endAt) {
         this.endAt = Date.now();
-        this.broadcast({ t: "end", result: { winner: g.winner, claimants: g.claimants, reason: g.reason, elapsed: g.elapsed, overtime: g.overtime,
+        // stats は sim.js の p.stats をそのまま（hides/reveals/hits/damage/taken/hp0/heals/skills/xp …）。level/xp はチーム別 [青, 橙]
+        this.broadcast({ t: "end", result: { winner: g.winner, claimants: g.claimants, reason: g.reason, elapsed: g.elapsed, overtime: g.overtime, level: g.level, xp: g.xp,
           players: g.players.map(p => ({ id: p.id, team: p.team, char: p.char, role: p.role, name: p.name, bot: p.bot, stats: p.stats })) } });
       } else if (Date.now() - this.endAt > 90000) { this.toLobby(); }
     }
@@ -193,8 +199,9 @@ export class Room {
     const last = this.lastSent.get(pid) || { eff: 0, logTick: -1 };
     const snap = Sim.snapshot(g, pid);
     snap.t = "snap";
-    snap.effects = g.effects.filter(e => e.id > last.eff && Sim.effectVisible(g, pid, e)).map(e => ({ id: e.id, type: e.type, x: e.x, y: e.y, life: e.life, maxLife: e.maxLife, team: e.team, angle: e.angle, owner: e.owner, target: e.target, text: e.text, icon: e.icon, kind: e.kind, marks: e.marks }));
-    snap.log = g.log.filter(l => l.tick > last.logTick);
+    snap.effects = g.effects.filter(e => e.id > last.eff && Sim.effectVisible(g, pid, e)).map(pubEffect);
+    // ログは観戦者に関係あるものだけ（合図・系統・奥義は味方だけ、見えていない敵の固有技は送らない）＝ Sim.logVisible
+    snap.log = g.log.filter(l => l.tick > last.logTick && Sim.logVisible(g, pid, l));
     if (full) snap.full = true;
     this.lastSent.set(pid, { eff: g.effects.length ? Math.max(last.eff, ...g.effects.map(e => e.id)) : last.eff, logTick: g.log.length ? g.log[g.log.length - 1].tick : last.logTick });
     this.send(ws, snap);

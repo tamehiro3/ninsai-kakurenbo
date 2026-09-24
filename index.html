@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="忍彩かくれんぼ">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -52,7 +52,7 @@
   <section id="screen-lobby" class="screen page">
     <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>対戦の準備</h2></header>
     <div class="page-body">
-      <h3>1. 忍者を選ぶ <small>公式39体・能力は全員同じ。見た目だけ</small></h3>
+      <h3>1. 忍者を選ぶ <small>公式39体・能力値6軸（合計21）と固有技が違う</small></h3>
       <div id="char-preview" class="char-preview"></div>
       <div id="char-grid" class="cgrid"></div>
       <h3>2. チーム <small>色と形で見分ける</small></h3>
@@ -115,6 +115,8 @@
       <div id="hud-mates" class="hud-mates"></div>
       <div class="hud-center">
         <div class="hud-time-wrap"><span id="hud-compass" class="compass">➤</span><span id="hud-time">4:00</span><span id="hud-ot" class="ot">延長</span></div>
+        <div id="hud-hp" class="hud-hp"><div class="hp-bar"><div id="hud-hp-bar" class="hp-fill"></div></div><span id="hud-hp-text">HP 100</span></div>
+        <div id="hud-level" class="hud-level"><span id="hud-level-text">Lv.1 0/80</span><div class="lv-bar"><div id="hud-level-bar"></div></div></div>
         <div class="hud-tag">城の旗を先に掴め</div>
       </div>
       <div class="hud-right">
@@ -125,6 +127,9 @@
     <div id="toast"></div>
     <div id="countdown"></div>
     <div id="hud-return"></div>
+    <div id="hud-exposed" class="hud-exposed"><div class="hx-text"><b>露見中</b> <span id="hud-exposed-sec">12</span>秒 — 味方の手当（1.5m・3秒）か自陣へ</div><div class="hx-bar"><div id="hud-exposed-bar"></div></div><div class="hx-sub" id="hud-exposed-sub"></div></div>
+    <div id="hud-heal" class="hud-heal"><div class="hx-text" id="hud-heal-text"></div><div class="hx-bar"><div id="hud-heal-bar"></div></div></div>
+    <div id="tree-pick" class="tree-pick"></div>
 
     <div id="tut-panel"></div>
     <button id="btn-tut-skip" class="btn small">練習をやめる</button>
@@ -136,8 +141,11 @@
 
     <div id="btns">
       <div id="ping-menu" class="ping-menu"></div>
+      <div id="skill-menu" class="ping-menu skill-menu"><button data-eye="white">⚪ 白目<small>5秒 索敵+1</small></button><button data-eye="black">⚫ 黒目<small>5秒 擬態+1</small></button></div>
+      <button class="abtn ult" data-action="ult" id="btn-ult"><span class="ic">🔥</span><span class="lb" id="btn-ult-label">奥義</span><kbd>Z</kbd></button>
       <button class="abtn sub" data-action="ping"><span class="ic">👋</span><span class="lb">合図</span><kbd>R</kbd></button>
       <button class="abtn sub" data-action="crouch" id="btn-crouch"><span class="ic">🧎</span><span class="lb">しゃがむ</span><kbd>C</kbd></button>
+      <button class="abtn skill" data-action="skill" id="btn-skill"><span class="ic">✨</span><span class="lb" id="btn-skill-label">固有技</span><kbd>X</kbd></button>
       <button class="abtn" data-action="scan"><span class="ic">👁</span><span class="lb">見破り</span><kbd>Q</kbd></button>
       <button class="abtn" data-action="camo"><span class="ic">🎋</span><span class="lb">布</span><kbd>E</kbd></button>
       <button class="abtn main" data-action="shot"><span class="ic">🏷</span><span class="lb">印</span><kbd>Space</kbd></button>
@@ -206,8 +214,8 @@
       </div>
       <div class="card">
         <h3>設計</h3>
-        <p>ルールは「忍彩かくれんぼ — 城旗争奪 ゲーム設計書 v1.0」（2026-09-22）に基づく単一端末向けの試作。3対3の通信対戦・三人称3Dは未実装で、競技の判定はサーバーへ移せる形（入力は方向と行動だけ、座標と命中は判定側が決める）で作ってあります。</p>
-        <p class="mini">版 1.0 ／ ルール版 1.0 ／ マップ「竹影の城」1.0</p>
+        <p>ルールは「忍彩かくれんぼ — 城旗争奪 ゲーム設計書 v1.0」（2026-09-22）に基づく単一端末向けの試作。三人称3Dは未実装で、競技の判定はサーバーへ移せる形（入力は方向と行動だけ、座標と命中は判定側が決める）で作ってあります。39体の能力値・固有技・HP・レベルアップは「39忍 キャラクター性能設計図 v1.1」「HP・レベルアップ機能 設計図 v1.2」に基づく本作の創作で、公式設定ではありません。</p>
+        <p class="mini">版 1.1 ／ ルール版 1.1（HP・成長） ／ マップ「竹影の城」1.0</p>
       </div>
     </div>
   </section>
@@ -236,11 +244,12 @@
     </div>
   </div>
 
-  <script src="chars.js?v=4"></script>
-  <script src="data.js?v=4"></script>
-  <script src="sim.js?v=4"></script>
-  <script src="render.js?v=4"></script>
-  <script src="net.js?v=4"></script>
-  <script src="game.js?v=4"></script>
+  <script src="chars.js?v=5"></script>
+  <script src="balance.js?v=5"></script>
+  <script src="data.js?v=5"></script>
+  <script src="sim.js?v=5"></script>
+  <script src="render.js?v=5"></script>
+  <script src="net.js?v=5"></script>
+  <script src="game.js?v=5"></script>
 </body>
 </html>

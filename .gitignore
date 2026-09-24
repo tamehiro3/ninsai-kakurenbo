@@ -7,3 +7,7 @@ docs/jev_result.json
 ★オンライン部屋サーバーを公開する.bat
 worker/node_modules/
 worker/.wrangler/
+
+# ユーザー提供の設計図（手元の正本・公開リポジトリには載せない）
+docs/character-balance-blueprint.txt
+docs/hp-level-blueprint.txt
