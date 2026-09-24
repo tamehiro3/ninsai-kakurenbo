@@ -2,12 +2,56 @@
 // 将来サーバーへ移す前提：入力は「方向と希望する行動」だけ。座標や命中はここが決める（設計書09）。
 const Sim = (() => {
   const D = (typeof DATA !== "undefined") ? DATA : require("./data.js");
+  const CastleLib = (typeof Castle !== "undefined") ? Castle : (typeof require === "function" ? require("./castle.js") : null);
   const R = D.RULES;
-  const W = D.MAP.w, H = D.MAP.h;
   const TICK = 1 / 30;
-  const FLAG = D.MAP.flag;
-  const SOLID = { "#": 1, "t": 1, "r": 1 };
-  const grid = D.MAP_ROWS.map(r => r.split(""));
+  // 移動を止めるマス（窓 x・鍵の扉 L・閉じた仕掛け扉 M を含む）／視線を止めるマス（窓は見通せる）
+  const SOLID = { "#": 1, "t": 1, "r": 1, "x": 1, "L": 1, "M": 1 };
+  const LOSBLOCK = { "#": 1, "t": 1, "r": 1, "L": 1, "M": 1 };
+  // 練習用の固定マップ（竹影の城・1階だけ）
+  const LEGACY = {
+    kind: "legacy", W: D.MAP.w, H: D.MAP.h, rows: D.MAP_ROWS.map(r => r.split("")), flag: D.MAP.flag,
+    spawn: [0, 1].map(t => D.MAP.spawn.map(sp => ({ x: t ? D.MAP.w - sp.x : sp.x, y: sp.y }))),
+    floorOf: null, portalAt: null, fieldCache: new Map(), version: 0, items: [], locks: [], mechs: [], pushes: [], fogObjs: [],
+  };
+  let curMap = LEGACY, W = LEGACY.W, H = LEGACY.H, FLAG = LEGACY.flag, grid = LEGACY.rows, floorOf = null, portalAt = null;
+  // 城（castle.js）→ 試合で使う地図
+  function castleMap(spec) {
+    const c = CastleLib.generate(spec);
+    const m = Object.assign({ kind: "castle", fieldCache: new Map(), version: 0 }, c);
+    m.floorOf = new Uint8Array(c.W * c.H).fill(255);
+    c.floors.forEach((fl, i) => { for (let y = fl.oy; y < fl.oy + fl.h; y++) for (let x = fl.ox; x < fl.ox + fl.w; x++) m.floorOf[y * c.W + x] = i; });
+    m.portalAt = new Map(c.portals.map(pt => [pt.cy * c.W + pt.cx, pt]));
+    // 階段の対（上り口⇔降り口）：着いた直後に相方の口を踏んでも戻らない
+    for (const pt of c.portals) {
+      if (pt.oneWay) continue;
+      const a = c.floors.find(f => f.id === pt.floor), b = c.floors.find(f => f.id === pt.toFloor);
+      const partner = c.portals.find(q => q.floor === pt.toFloor && q.toFloor === pt.floor && q.cx - b.ox === pt.cx - a.ox && q.cy - b.oy === pt.cy - a.oy);
+      pt.partner = partner ? partner.cy * c.W + partner.cx : -1;
+    }
+    m.trapAt = new Map(c.traps.map(t => [t.cy * c.W + t.cx, t]));
+    m.fogObjs = c.fogs.map((f, i) => ({ id: -1 - i, kind: "zone_fog", team: -1, x: f.x, y: f.y, r: f.r, life: 1e9, static: true }));
+    m.locks.forEach(l => { l.open = false; });
+    m.mechs.forEach(me => { me.open = true; });
+    m.items.forEach(it => { it.taken = false; });
+    const pwGroup = new Map();
+    m.pushes.forEach(pw => {
+      const fl = c.floors.find(f => f.id === pw.floor), x0 = pw.cells[0][0] - fl.ox, y0 = pw.cells[0][1];
+      const key = pw.floor + ":" + Math.min(x0, fl.w - 1 - x0) + ":" + y0;      // 鏡写しの相方は同じ鍵
+      if (!pwGroup.has(key)) pwGroup.set(key, pwGroup.size);
+      pw.next = 5 + pwGroup.get(key) * 1.7; pw.warned = false;
+    });
+    m.period = c.castle.type === "water" ? 14 : 10;
+    return m;
+  }
+  function bindMap(g) {
+    const m = (g && g.map) || LEGACY;
+    if (m === curMap) return;
+    curMap = m; W = m.W; H = m.H; FLAG = m.flag; grid = m.rows; floorOf = m.floorOf || null; portalAt = m.portalAt || null;
+  }
+  // 地図が変わった（鍵の扉が開いた・仕掛け扉が動いた）ら経路の計算をやり直す
+  function mapChanged(m) { m.version++; m.fieldCache.clear(); }
+  function floorAt(x, y) { if (!floorOf) return 0; const cx = x | 0, cy = y | 0; if (cx < 0 || cy < 0 || cx >= W || cy >= H) return 255; return floorOf[cy * W + cx]; }
 
   // ---------- 地形 ----------
   function cellAt(x, y) {
@@ -71,10 +115,10 @@ const Sim = (() => {
     const n = Math.ceil(len / 0.2);
     for (let i = 1; i < n; i++) {
       const t = i / n;
-      if (SOLID[cellAt(ax + dx * t, ay + dy * t)]) return false;
+      if (LOSBLOCK[cellAt(ax + dx * t, ay + dy * t)]) return false;
     }
     if (DYN.length && dynBlocksLos(ax, ay, bx, by)) return false;
-    return !SOLID[cellAt(bx, by)];
+    return !LOSBLOCK[cellAt(bx, by)];
   }
   function pathClear(ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
@@ -90,19 +134,25 @@ const Sim = (() => {
     for (const o of DYN) if (o.kind === "paint_zone" && Math.abs(x - o.x) <= o.half && Math.abs(y - o.y) <= o.half) return o.pattern;
     return null;
   }
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  // 別の階どうしは「とても遠い」（範囲技・音・視界が階をまたがない）
+  const dist = (a, b) => { if (floorOf) { const fa = floorAt(a.x, a.y), fb = floorAt(b.x, b.y); if (fa !== fb && fa !== 255 && fb !== 255) return Infinity; } return Math.hypot(a.x - b.x, a.y - b.y); };
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   const mirrorX = x => W - x;
+  const viewRangeOf = p => R.viewRange + (curMap.kind === "castle" && cellAt(p.x, p.y) === "y" ? 6 : 0);   // 火見櫓：遠くまで見える
 
-  // BFS距離場（チームごとに敵陣地を壁扱い）。Botの経路用
-  const fieldCache = new Map();
+  // BFS距離場（チームごとに敵陣地を壁扱い・階段/降下幕をたどる）。Botの経路用。地図ごと・地図が変わるたびに作り直す
   function field(team, tx, ty) {
     const cx = Math.max(0, Math.min(W - 1, tx | 0)), cy = Math.max(0, Math.min(H - 1, ty | 0));
     const key = team + ":" + cx + "," + cy;
-    let f = fieldCache.get(key);
+    const cache = curMap.fieldCache;
+    let f = cache.get(key);
     if (f) return f;
+    if (cache.size > 360) cache.clear();
     f = new Int16Array(W * H).fill(-1);
     const q = [cx + cy * W]; f[cx + cy * W] = 0;
+    // 逆向き：着地点 → そこへ飛ばす口
+    let from = curMap.portalFrom;
+    if (portalAt && !from) { from = curMap.portalFrom = new Map(); for (const [i, pt] of portalAt) { const j = (pt.ty | 0) * W + (pt.tx | 0); if (!from.has(j)) from.set(j, []); from.get(j).push(i); } }
     for (let qi = 0; qi < q.length; qi++) {
       const i = q[qi], x = i % W, y = (i / W) | 0, d = f[i];
       const nb = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
@@ -110,10 +160,12 @@ const Sim = (() => {
         if (solidCell(nx, ny, team)) continue;
         const j = nx + ny * W;
         if (f[j] >= 0) continue;
+        if (portalAt && portalAt.has(j)) continue;   // 口のマスに乗ったら必ず飛ぶ＝隣へ歩いて出られない
         f[j] = d + 1; q.push(j);
       }
+      if (from && from.has(i)) for (const j of from.get(i)) { if (f[j] < 0 && !solidCell(j % W, (j / W) | 0, team)) { f[j] = d + 1; q.push(j); } }
     }
-    fieldCache.set(key, f);
+    cache.set(key, f);
     return f;
   }
   // 距離場を下る方向（斜めは両隣が空いているときだけ）
@@ -144,8 +196,8 @@ const Sim = (() => {
   // ---------- 生成 ----------
   function makePlayer(id, team, charIdx, opts = {}) {
     const slot = opts.slot | 0;
-    const sp = D.MAP.spawn[slot % 3];
-    const x = team ? mirrorX(sp.x) : sp.x;
+    const sp = { x: curMap.spawn[team][slot % 3].x, y: curMap.spawn[team][slot % 3].y };
+    const x = sp.x;
     return {
       id, team, char: Math.max(0, Math.min(D.CHARS.length - 1, charIdx | 0)), name: opts.name || D.CHARS[Math.max(0, Math.min(D.CHARS.length - 1, charIdx | 0))].name,
       bot: !!opts.bot, role: opts.role || "scout", slot,
@@ -158,6 +210,8 @@ const Sim = (() => {
       hp: R.hp.byLevel[0], hpMax: R.hp.byLevel[0], exposed: 0, healT: 0, healBy: null, exposedAt: -99, silentT: 0, stunT: 0, aimJitter: 0,
       // 成長：レベルごとに選んだ系統 {2:"影",...}、選択待ち、奥義
       perks: {}, pendingLevel: 0, pickT: 0, ult: { used: false, active: 0 }, firstHitCd: 0, firstHitArmed: false, crossedCenter: false, lastSide: 0, protectBonus: 0, soulBoosted: false,
+      // 城：上下接続の待ち・罠の待ち・回復地点
+      lastCell: -1, portalCd: 0, noPortal: -1, trapCd: 0, shrineT: 0, shrineCd: 0,
       // 固有技
       skillCd: 0, sk: {}, mods: [],       // mods: [{k:"speed", mul:1.15, t:4}, ...]
       bal: balanceFor(charIdx),
@@ -186,17 +240,33 @@ const Sim = (() => {
       slowFactor: R.slowFactor + k(st.esc) * 0.06, exposeMove: R.hp.exposeMove + k(st.esc) * 0.04,
     };
   }
+  // 城の仕様（seed・難しさ・城型）。省略時は練習用の固定マップ
+  function mapFor(opts) { return opts && opts.castle && CastleLib ? castleMap(Object.assign({ difficulty: opts.difficulty || "normal" }, opts.castle)) : LEGACY; }
+  function intelFor(m) {
+    if (m.kind !== "castle") return [{ known: true, candidates: [] }, { known: true, candidates: [] }];
+    const mk = () => {
+      const info = m.castle.flagInfo;
+      if (info === "full") return { known: true, floorKnown: true, candidates: [m.flagRoom] };
+      if (info === "floor") return { known: false, floorKnown: true, candidates: m.rooms.filter(r => r.floor === m.flagFloor && r.spawn == null).map(r => r.id) };
+      return { known: false, floorKnown: false, candidates: m.candidates.slice() };
+    };
+    return [mk(), mk()];
+  }
   function createMatch(opts) {
+    const map = mapFor(opts);
+    bindMap({ map });
+    const dur = map.kind === "castle" ? map.castle.duration : R.duration;
     const g = {
+      map, intel: intelFor(map), keys: [0, 0], mapT: 0, duration: dur,
       xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [], serial2: 0,
       phase: "briefing", timer: opts.briefing === false ? 0 : R.briefing,
-      time: R.duration, elapsed: 0, tick: 0, overtime: false,
+      time: dur, elapsed: 0, tick: 0, overtime: false,
       seed: (opts.seed | 0) || 20260922,
       difficulty: D.DIFFICULTY[opts.difficulty] || D.DIFFICULTY.normal,
       practice: !!opts.practice, noTimer: !!opts.noTimer,
       players: [], shots: [], effects: [], log: [], serial: 0,
       winner: [], claimants: [], reason: "", claimTick: -1,
-      flag: "available", rules: R.version, map: D.MAP.version,
+      flag: "available", rules: R.version, mapVersion: map.kind === "castle" ? "castle:" + map.castle.seed : D.MAP.version,
     };
     (opts.players || []).forEach((p, i) => g.players.push(makePlayer(p.id || ("p" + i), p.team, p.char, p)));
     for (const p of g.players) assignAi(g, p);
@@ -207,15 +277,30 @@ const Sim = (() => {
     const dif = g.difficulty;
     // HP制（3発で露見）になって守りが弱まったぶん、最短取得を設計書の目安（初回45〜90秒）へ寄せる。手ごわいは従来どおり速い
     p.ai.minClaim = dif.aggro ? 18 + rng(g) * 15 : dif.name === "やさしい" ? 60 + rng(g) * 40 : 45 + rng(g) * 35;
+    // 城：試合が長い（4〜6分）ぶん、待ち・突入の目安も伸ばす（練習用の固定マップは240秒のまま）
+    p.ai.tscale = curMap.kind === "castle" ? (g.duration || R.duration) / R.duration : 1;
+    p.ai.minClaim *= p.ai.tscale;
     p.ai.routeOverride = null;
     if (dif.aggro && p.bot && rng(g) < 0.5) {
-      const routes = Object.keys(D.MAP.routes);
+      const routes = curMap.kind === "castle" ? curMap.routes[p.team].map((r, i) => i) : Object.keys(D.MAP.routes);
       p.ai.routeOverride = routes[(rng(g) * routes.length) | 0];
     }
+    // 城で旗の場所をまだ知らない：まず候補の部屋を探す
+    if (curMap.kind === "castle" && g.intel && !g.intel[p.team].known) p.ai.phase = "search";
   }
-  function resetForRematch(g, swapTeams) {
+  // 再戦：城なら新しい城（opts.castle、無ければ同じ seed に再戦回数を足して作り直す）
+  function resetForRematch(g, swapTeams, opts) {
+    if (g.map && g.map.kind === "castle") {
+      const prev = g.map.castle;
+      const spec = (opts && opts.castle) || { seed: prev.baseSeed + ":r" + ((g.rematch | 0) + 1), difficulty: prev.difficulty, type: prev.type };
+      g.map = mapFor({ castle: spec, difficulty: spec.difficulty || prev.difficulty });
+    }
+    g.rematch = (g.rematch | 0) + 1;
+    bindMap(g);
+    g.intel = intelFor(g.map); g.keys = [0, 0]; g.mapT = 0;
+    g.duration = g.map.kind === "castle" ? g.map.castle.duration : R.duration;
     const players = g.players.map(p => makePlayer(p.id, swapTeams ? 1 - p.team : p.team, p.char, { slot: p.slot, name: p.name, bot: p.bot, role: p.role, connected: p.connected }));
-    Object.assign(g, { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false,
+    Object.assign(g, { phase: "briefing", timer: R.briefing, time: g.duration, elapsed: 0, tick: 0, overtime: false,
       shots: [], effects: [], log: [], winner: [], claimants: [], reason: "", claimTick: -1, flag: "available",
       xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [] });
     DYN = g.dyn;
@@ -258,8 +343,8 @@ const Sim = (() => {
     }
   }
   function spawnPos(p) {
-    const sp = D.MAP.spawn[p.slot % 3];
-    return { x: p.team ? mirrorX(sp.x) : sp.x, y: sp.y };
+    const sp = curMap.spawn[p.team][p.slot % 3];
+    return { x: sp.x, y: sp.y };
   }
   function returnHome(g, p) {
     unhide(g, p, true);
@@ -282,9 +367,9 @@ const Sim = (() => {
   }
   function canSee(p, q) {
     if (q.returning > 0) return false;
-    const d = dist(p, q);
-    if (d > R.viewRange) return false;
-    if (q.exposed > 0 && d <= R.viewRange && lineClear(p.x, p.y, q.x, q.y)) return true;
+    const d = dist(p, q), vr = viewRangeOf(p);
+    if (d > vr) return false;
+    if (q.exposed > 0 && d <= vr && lineClear(p.x, p.y, q.x, q.y)) return true;
     if (!lineClear(p.x, p.y, q.x, q.y)) return false;
     if (p.team !== q.team && d > 1.2 && (inZone("zone_dark", q.x, q.y) || inZone("zone_dark", p.x, p.y))) return false;
     if (q.camo === 2 && q.reveal <= 0 && d >= R.closeSee) return false;
@@ -307,6 +392,7 @@ const Sim = (() => {
     // 紫煙から出た直後は足跡が残る（視程内の敵には方向が伝わる）
     if (listener.team !== src.team && modHas(src, "fogTrail") && dist(listener, src) <= R.viewRange) return true;
     let r = src.camo === 2 ? (modHas(src, "foxdash") ? R.footCrouch : R.footCamo) : src.crouch ? R.footCrouch : R.footRun;   // 狐駆け：布の揺れが大きい
+    if (curMap.kind === "castle") { const c = cellAt(src.x, src.y); if (c === "q" || c === "u") r = Math.min(r, R.footCrouch); }   // 縁側・床下通路は足音が小さい
     r *= hearMul;
     if (!lineClear(listener.x, listener.y, src.x, src.y)) r *= 0.5;
     return dist(listener, src) <= r;
@@ -314,6 +400,12 @@ const Sim = (() => {
 
   // ---------- Bot ----------
   function routeFor(p) {
+    if (curMap.kind === "castle") {
+      const rs = curMap.routes[p.team];
+      const idx = p.ai && p.ai.routeOverride != null ? p.ai.routeOverride : p.role === "vanguard" ? 0 : p.role === "scout" ? 1 : 2;
+      const rt = rs[idx % rs.length];
+      return { pts: rt.pts, wait: rt.wait, approach: rt.approach, door: rt.door };
+    }
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[1];
     const rt = D.MAP.routes[(p.ai && p.ai.routeOverride) || role.route];
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
@@ -339,6 +431,14 @@ const Sim = (() => {
   function guardPosts(team, dif) {
     // 旗から「警戒半径＋0.6m」の自陣側に3か所（敵の持ち場とは印が届かない距離）
     const r = alertRadius(dif) + 0.6;
+    if (curMap.kind === "castle") {
+      // 城：旗の間の中で、自陣側（青は左・橙は右）の歩けるところ。壁なら半径を縮める
+      return [-0.42, 0, 0.42].map(a => {
+        const ang = (team ? 0 : Math.PI) + a;
+        for (let rr = r; rr >= 2.2; rr -= 0.25) { const x = FLAG.x + Math.cos(ang) * rr, y = FLAG.y + Math.sin(ang) * rr; if (!blocked(x, y, R.bodyRadius + 0.05, team) && lineClear(x, y, FLAG.x, FLAG.y)) return { x, y }; }
+        return { x: FLAG.x + Math.cos(ang) * 2.2, y: FLAG.y };
+      });
+    }
     return [-0.42, 0, 0.42].map(a => {
       const ang = Math.PI + a;
       const x = FLAG.x + Math.cos(ang) * r, y = FLAG.y + Math.sin(ang) * r;
@@ -352,6 +452,7 @@ const Sim = (() => {
     south:  { peek: [30.5, 31.0], attack: [29.0, 27.4] },
   };
   function harassPts(p) {
+    if (curMap.kind === "castle") { const rt = routeFor(p); return { peek: rt.approach || rt.door, attack: rt.door }; }
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[2];
     const h = HARASS[(p.ai && p.ai.routeOverride) || role.route] || HARASS.south;
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
@@ -404,7 +505,7 @@ const Sim = (() => {
     const enemies = g.players.filter(q => q.team !== p.team && q.exposed <= 0);   // 露見中の敵は印が当たらず旗も掴めない
     const mates = g.players.filter(q => q.team === p.team && q !== p);
     const flagD = dist(p, FLAG);
-    const late = g.overtime || g.elapsed > 120;
+    const late = g.overtime || g.elapsed > (g.duration || R.duration) * 0.5;
     const easy = dif.aimErr > 0.2;
 
     // ---- 知覚（人間と同じ可視ルール＋視野220°）----
@@ -418,6 +519,7 @@ const Sim = (() => {
       else if (audible(p, q) && rng(g) < 0.6 && !(ai.suspect && ai.suspect.sure))
         ai.suspect = { x: q.x + (rng(g) - 0.5) * 2, y: q.y + (rng(g) - 0.5) * 2, t: 1.5, sure: false };
     }
+    for (const o of g.objects) if (o.kind === "phantom" && phantomAudible(p, o) && rng(g) < 0.5 && !(ai.suspect && ai.suspect.sure)) ai.suspect = { x: o.x, y: o.y, t: 1.5, sure: false };
     const enemy = seen[0] || null;
     if (enemy) { ai.seen += interval; ai.lastContact = g.elapsed; } else ai.seen = 0;
     const reacted = enemy && ai.seen >= dif.reaction;
@@ -426,9 +528,11 @@ const Sim = (() => {
     const alertR = alertRadius(dif);
     // 競り合い：旗へ「向かって来ている」敵だけを侵入者とみなす（陽動役が旗の近くをうろつくだけでは反応しない。HP制で守りが弱まったぶん早取りを抑える）
     const intruder = enemies.filter(q => q.returning <= 0 && dist(q, FLAG) < alertR && (botSees(p, q) || q.reveal > 0) && (approaching(q) && (dist(q, FLAG) < flagD + 1.5 || dist(q, FLAG) < alertR * 0.6))).sort((a, b) => dist(a, FLAG) - dist(b, FLAG))[0] || null;
-    const contest = !!intruder && flagD <= dist(intruder, FLAG) + 2.5;
+    const contest = !!intruder && flagD <= dist(intruder, FLAG) + 2.5 && (curMap.kind !== "castle" || g.elapsed > ai.minClaim * 0.5);
     const quiet2 = ai.lastContact + 2 < g.elapsed && !ai.suspect && !enemies.some(q => q.returning <= 0 && dist(q, FLAG) < 12 && audible(p, q));
     const opportunity = quiet2 && g.elapsed > ai.minClaim;
+    // 旗のそばに「攻めに出た」味方がいれば続く（城：探索中にたまたま旗の間へ入った味方には釣られない）
+    const mateAtFlag = mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5 && (curMap.kind !== "castle" || m.ai.phase === "go"));
 
     // ---- 露見中：近くに味方がいれば待つ、いなければ自陣へ ----
     if (p.exposed > 0) {
@@ -448,6 +552,12 @@ const Sim = (() => {
     if (wounded && !enemies.some(q => q.returning <= 0 && botSees(p, q))) {
       if (dist(p, wounded) <= 1.2) { setInput(p, { x: 0, y: 0, actions: [] }); return; }
       const mv = steer(g, p, wounded); setInput(p, { x: mv.x, y: mv.y, actions: [] }); return;
+    }
+    // ---- 城：旗が分かったら探索をやめてルートへ ----
+    if (curMap.kind === "castle" && g.intel) {
+      const I = g.intel[p.team];
+      if (ai.phase === "search" && I.known) { ai.phase = "route"; ai.wp = resumeWp(g, p); ai.searchRoom = null; }
+      else if (ai.phase !== "search" && !I.known) ai.phase = "search";
     }
     // ---- 固有技・奥義（状況で使う）----
     const skillActs = botSkill(g, p, enemies, mates, seen, flagD);
@@ -486,8 +596,10 @@ const Sim = (() => {
     // ---- 目標地点 ----
     const route = routeFor(p);
     let goal = FLAG, hold = false, angleHold = null;
+    if (ai.phase === "search") goal = searchTarget(g, p);
     if (ai.phase === "route") {
-      while (ai.wp < route.pts.length && dist(p, route.pts[ai.wp]) < 1.3) ai.wp++;
+      // 階段の口の地点は、踏んで別の階へ移ったら（次の地点の方が近い）通過したことにする
+      while (ai.wp < route.pts.length && (dist(p, route.pts[ai.wp]) < 1.3 || (route.pts[ai.wp].stair && ai.wp + 1 < route.pts.length && dist(p, route.pts[ai.wp + 1]) < dist(p, route.pts[ai.wp])))) ai.wp++;
       if (ai.wp >= route.pts.length) {
         if (late) ai.phase = "go";
         else if (p.role === "vanguard" && g.elapsed < 60) ai.phase = "towait";
@@ -501,10 +613,12 @@ const Sim = (() => {
       goal = route.wait;
       if (dist(p, goal) < 0.45) {
         if (zoneAt(p.x, p.y) && p.camoCd <= 0 && p.reveal <= 0 && p.protect <= 0) {
-          ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20); ai.waitT = 0;
+          ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20) * (ai.tscale || 1); ai.waitT = 0;
           setInput(p, { x: 0, y: 0, actions: ["camo"] }); return;
         }
-        ai.phase = "go";
+        // 城：擬態できない待ち場所でも、攻め時まではその場で待つ
+        if (curMap.kind === "castle" && !late && g.elapsed < ai.minClaim) { ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20) * (ai.tscale || 1); ai.waitT = 0; }
+        else ai.phase = "go";
       }
     }
     if (ai.phase === "wait") {
@@ -532,7 +646,7 @@ const Sim = (() => {
         if (p.scanCd <= 0 && p.protect <= 0 && (ai.suspect || rng(g) < 0.015) && rng(g) < dif.scanUse) { actions.push("scan"); ai.suspect = null; angleHold = ai.suspect ? Math.atan2(ai.suspect.y - p.y, ai.suspect.x - p.x) : angleHold; }
         if (g.elapsed - ai.postT > 20 && rng(g) < 0.04) { ai.post = guardPosts(p.team, dif)[(rng(g) * 3) | 0]; ai.postT = g.elapsed; }
       }
-      if (late || contest || opportunity || mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5)) ai.phase = "go";
+      if (late || contest || opportunity || mateAtFlag) ai.phase = "go";
     }
     if (ai.phase === "harass") {
       const hp = harassPts(p);
@@ -547,10 +661,10 @@ const Sim = (() => {
         if (g.elapsed - ai.hzT > (dif.aggro ? 1.5 + rng(g) * 1.5 : 3 + rng(g) * 3) && p.marks === 0) {
           ai.hz = "attack"; ai.hzT = g.elapsed;
           // 手ごわい：覗く場所を変えて読まれにくくする（複雑さ）
-          if (dif.aggro && rng(g) < 0.5) { const routes = Object.keys(D.MAP.routes); ai.routeOverride = routes[(rng(g) * routes.length) | 0]; }
+          if (dif.aggro && rng(g) < 0.5) { const routes = curMap.kind === "castle" ? curMap.routes[p.team].map((r, i) => i) : Object.keys(D.MAP.routes); ai.routeOverride = routes[(rng(g) * routes.length) | 0]; }
         }
       }
-      if (late || contest || (ai.quietT > 6 && quiet2 && g.elapsed > ai.minClaim * 0.7) || opportunity || mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5)) ai.phase = "go";
+      if (late || contest || (ai.quietT > 6 && quiet2 && g.elapsed > ai.minClaim * 0.7) || opportunity || mateAtFlag) ai.phase = "go";
     }
     if (ai.phase === "go") {
       goal = FLAG;
@@ -612,8 +726,10 @@ const Sim = (() => {
   // ---------- 1tick ----------
   const DYN_KINDS = { wall: 1, zone_fog: 1, zone_dark: 1, zone_water: 1, paint_zone: 1, zone_null: 1, zone_petals: 1 };
   function bindDyn(g) { DYN = (g && g.dyn) || []; }
+  function rebuildDyn(g) { bindMap(g); g.dyn = (g.objects || []).filter(o => !o.dead && DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending)).concat(curMap.fogObjs || []); DYN = g.dyn; }
   function step(g) {
     const dt = TICK;
+    bindMap(g);
     bindDyn(g);
     if (g.phase === "finished") return;
     g.tick++;
@@ -628,8 +744,9 @@ const Sim = (() => {
     if (!g.noTimer) g.time -= dt;
     const claims = [];
     stepObjects(g, dt);
-    g.dyn = g.objects.filter(o => DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending));   // 予告中の金剛壁はまだ実体がない
+    g.dyn = g.objects.filter(o => DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending)).concat(curMap.fogObjs || []);   // 予告中の金剛壁はまだ実体がない・城の霧庭は常設
     DYN = g.dyn;
+    if (curMap.kind === "castle") { stepMap(g, dt); if (g.tick % 5 === 0) updateIntel(g); }
     // 旗の周囲4mの確保（生存人数で上回っている側に +8/3秒・チームで1回分）
     for (const t of [0, 1]) {
       const alive = tm => g.players.filter(q => q.team === tm && q.returning <= 0 && q.exposed <= 0).length;
@@ -739,6 +856,7 @@ const Sim = (() => {
       const difMul = p.bot && !p.controller && g.difficulty.speedMul ? g.difficulty.speedMul : 1;
       let speed = base * (p.slow > 0 ? p.bal.slowFactor : 1) * difMul * modMul(p, "speed");
       if (p.exposed > 0) speed = R.speed * p.bal.speedMul * p.bal.exposeMove * difMul;   // 露見：本人の速さの70%（逃走で±）
+      if (curMap.kind === "castle") { const cu = cellAt(p.x, p.y); if (cu === "=") speed *= 0.8; else if (cu === "u") speed = Math.min(speed, R.crouchSpeed * p.bal.speedMul); }   // 浅瀬は遅い・床下通路はしゃがみ歩き
       if (p.sk.channel && p.sk.channel.speedMul != null) speed *= p.sk.channel.speedMul;
       if (DYN.some(o => o.kind === "zone_null" && o.owner === p.id && Math.hypot(p.x - o.x, p.y - o.y) <= o.r)) speed *= 0.7;   // 罪業：本人も遅くなる
       const nx = p.x + i.x * speed * dt, ny = p.y + i.y * speed * dt;
@@ -747,12 +865,14 @@ const Sim = (() => {
       p.speedNow = Math.hypot(p.x - p.px, p.y - p.py) / dt;
       if (p.camo === 2 && !zoneAt(p.x, p.y)) unhide(g, p);
       {
-        const side = p.x < FLAG.x ? 0 : 1, enemySide = 1 - p.team;
+        const side = p.x < axisOf(p) ? 0 : 1, enemySide = 1 - p.team;
         if (p.camo === 2 && !p.crossedCenter && p.lastSide === p.team && side === enemySide) { p.crossedCenter = true; addXp(g, p.team, R.hp.xp.cross, "cross"); }
         p.lastSide = side;
       }
       // 設置物との接触（狐火・棘道・矢印・影穴の入口）
       touchObjects(g, p);
+      // 城：上下接続・罠・鍵・回復地点
+      if (curMap.kind === "castle") mapInteract(g, p, dt);
 
       // 旗まわりの波紋
       const fd = dist(p, FLAG);
@@ -888,8 +1008,169 @@ const Sim = (() => {
     }
   }
 
+  // ---------- 城：上下接続・罠・鍵・仕掛け扉・情報 ----------
+  function axisOf(p) {
+    if (curMap.kind !== "castle") return FLAG.x;
+    const fi = floorAt(p.x, p.y), fl = curMap.floors[fi === 255 ? 0 : fi];
+    return fl.ox + fl.w / 2;
+  }
+  function teleport(g, p, pt) {
+    unhide(g, p, true);
+    emit(g, "portal", p.x, p.y, { team: -1, life: 0.6, kind: pt.kind, dir: pt.dir });
+    p.x = pt.tx; p.y = pt.ty; p.px = p.x; p.py = p.y;
+    p.portalCd = 0.4; p.noPortal = pt.partner != null ? pt.partner : -1; p.noPortalT = 1.0; p.lastCell = (p.y | 0) * W + (p.x | 0);
+    emit(g, "portal", p.x, p.y, { team: -1, life: 0.6, kind: pt.kind, dir: pt.dir });
+  }
+  // 押し出す（急流・押し壁）。壁と敵の陣地の手前で止まる
+  function pushPlayer(g, p, dx, dy) {
+    const L = Math.hypot(dx, dy); if (L < 1e-6) return;
+    let bx = p.x, by = p.y;
+    for (let s2 = 0.25; s2 <= L + 1e-6; s2 += 0.25) { const nx = p.x + dx / L * s2, ny = p.y + dy / L * s2; if (blocked(nx, ny, R.bodyRadius, p.team) || !pathClear(p.x, p.y, nx, ny)) break; bx = nx; by = ny; }
+    if (bx !== p.x || by !== p.y) { unhide(g, p); emit(g, "shove", p.x, p.y, { team: -1, tx: bx, ty: by, life: 0.5 }); p.x = bx; p.y = by; p.px = bx; p.py = by; }
+  }
+  function openLock(g, lk, p) {
+    lk.open = true;
+    for (const [x, y] of lk.cells) grid[y][x] = ".";
+    mapChanged(curMap);
+    emit(g, "unlock", lk.cells[0][0] + 0.5, lk.cells[0][1] + 0.5, { team: p ? p.team : -1, life: 1 });
+    logEvent(g, "unlock", { id: p ? p.id : null, team: p ? p.team : -1, lock: lk.id });
+  }
+  function addPhantom(g, x, y) {
+    g.objects.push({ id: ++g.serial2, kind: "phantom", team: -1, x, y, angle: rng(g) * Math.PI * 2, life: 4, speed: 3 });
+  }
+  function phantomAudible(listener, o) {
+    if (o.kind !== "phantom") return false;
+    let r = R.footRun; if (!lineClear(listener.x, listener.y, o.x, o.y)) r *= 0.5;
+    return dist(listener, o) <= r;
+  }
+  function mapInteract(g, p, dt) {
+    const m = curMap;
+    p.portalCd = Math.max(0, p.portalCd - dt); p.trapCd = Math.max(0, p.trapCd - dt); p.shrineCd = Math.max(0, p.shrineCd - dt);
+    const ci = (p.y | 0) * W + (p.x | 0), entered = ci !== p.lastCell;
+    p.lastCell = ci;
+    if (p.noPortal >= 0) { p.noPortalT = (p.noPortalT || 0) - dt; const nx = p.noPortal % W + 0.5, ny = ((p.noPortal / W) | 0) + 0.5; if (Math.hypot(p.x - nx, p.y - ny) > 1.6 || p.noPortalT <= 0) p.noPortal = -1; }
+    const pt = portalAt.get(ci);
+    if (pt && p.portalCd <= 0 && ci !== p.noPortal) { teleport(g, p, pt); return; }
+    const ch = grid[p.y | 0][p.x | 0];
+    if (entered) {
+      if (ch === "n") { addMod(p, "fogTrail", 3, { src: "naruko" }); emit(g, "naruko", p.x, p.y, { team: -1, life: 1 }); emit(g, "footprint", p.x, p.y, { team: 1 - p.team, life: 3 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "naruko" }); }   // 鳴子：3秒だけ足跡が見える
+      else if (ch === "c" && p.trapCd <= 0) { const tr = m.trapAt.get(ci); if (tr && tr.dir) { pushPlayer(g, p, tr.dir[0] * 2, tr.dir[1] * 2); p.trapCd = 0.8; logEvent(g, "trap", { id: p.id, team: p.team, kind: "current" }); } }   // 急流：2m押し流す（HPは減らない）
+      else if (ch === "f" && p.trapCd <= 0 && p.exposed <= 0) {   // 火鉢：8ダメージ・HP1未満にはならない・XPなし
+        const before = p.hp; p.hp = Math.max(1, p.hp - 8); p.trapCd = 1.2;
+        if (before > p.hp) { emit(g, "burn", p.x, p.y, { team: -1, target: p.id, dmg: before - p.hp, life: 0.8 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "brazier", dmg: before - p.hp }); }
+      }
+      else if (ch === "l") { const tr = m.trapAt.get(ci); if (tr && !(tr.cd > g.elapsed)) { tr.cd = g.elapsed + 6; addPhantom(g, p.x, p.y); emit(g, "lantern", p.x, p.y, { team: -1, life: 0.8 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "lantern" }); } }   // 幻灯：偽の足音を4秒
+      else if (ch === "S") { const lk = m.locks.find(l => !l.open && (l.sws || (l.sw ? [l.sw] : [])).some(s => s[0] === (p.x | 0) && s[1] === (p.y | 0))); if (lk) openLock(g, lk, p); }   // 近道スイッチ
+    }
+    // 回復地点：静かに2秒立つと +25（露見中は不可・20秒に一度）
+    if (ch === "H" && p.exposed <= 0 && p.speedNow < 0.3 && p.shrineCd <= 0) { p.shrineT += dt; if (p.shrineT >= 2) { const before = p.hp; p.hp = Math.min(p.hpMax, p.hp + 25); p.shrineCd = 20; p.shrineT = 0; emit(g, "shrine", p.x, p.y, { team: p.team, target: p.id, heal: p.hp - before, life: 1 }); } }
+    else p.shrineT = 0;
+    // 鍵：拾うとチームの鍵が1つ増える／鍵の扉に触れると開く
+    for (const it of m.items) if (!it.taken && it.kind === "key" && Math.hypot(p.x - it.x, p.y - it.y) < 0.8 && p.exposed <= 0) { it.taken = true; g.keys[p.team]++; emit(g, "key", it.x, it.y, { team: p.team, life: 1 }); logEvent(g, "key", { id: p.id, team: p.team }); }
+    if (g.keys[p.team] > 0 && p.exposed <= 0) for (const lk of m.locks) { if (lk.open) continue; if (lk.cells.some(([x, y]) => Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y) < 1.3)) { g.keys[p.team]--; openLock(g, lk, p); break; } }
+  }
+  // 時間で動く仕掛け：回転壁/水門（2組が交互に開閉・敷居に人がいる間は延期）・押し壁（予告1秒のち押す）
+  function stepMap(g, dt) {
+    const m = curMap;
+    g.mapT += dt;
+    if (m.mechs.length) {
+      const phase = Math.floor(g.mapT / m.period) % 2;
+      let changed = false;
+      for (const me of m.mechs) {
+        const want = me.group === 0 ? phase === 0 : phase === 1;
+        if (want === me.open) continue;
+        if (!want && g.players.some(q => q.returning <= 0 && me.cells.some(([x, y]) => Math.hypot(x + 0.5 - q.x, y + 0.5 - q.y) < R.bodyRadius + 0.75))) continue;   // 敷居に人がいる＝閉めない
+        me.open = want; changed = true;
+        for (const [x, y] of me.cells) grid[y][x] = want ? "m" : "M";
+        emit(g, "mech", me.cells[0][0] + 0.5, me.cells[0][1] + 0.5, { team: -1, open: want, life: 0.8 });
+      }
+      if (changed) mapChanged(m);
+    }
+    for (const pw of m.pushes) {
+      if (!pw.warned && g.mapT >= pw.next - 1) { pw.warned = true; emit(g, "push_warn", pw.cells[0][0] + 0.5, pw.cells[0][1] + 1, { team: -1, dx: pw.dx, life: 1 }); }
+      if (g.mapT >= pw.next) {
+        pw.next += 7; pw.warned = false;
+        for (const q of g.players) { if (q.returning > 0) continue; const c = (q.y | 0) * W + (q.x | 0); if (pw.cells.some(([x, y]) => y * W + x === c)) { pushPlayer(g, q, pw.dx, pw.dy); logEvent(g, "trap", { id: q.id, team: q.team, kind: "pushwall" }); } }
+      }
+    }
+  }
+  // 旗の情報：見えた（射線・視程内）ら判明。候補の部屋は中が見えたら消える。旗印を見つけると偽の候補が1つ消える
+  function updateIntel(g) {
+    const m = curMap;
+    for (const t of [0, 1]) {
+      const I = g.intel[t]; if (I.known) continue;
+      for (const p of g.players) {
+        if (p.team !== t || p.returning > 0) continue;
+        const vr = viewRangeOf(p);
+        if (dist(p, FLAG) <= vr && lineClear(p.x, p.y, FLAG.x, FLAG.y)) { I.known = true; I.floorKnown = true; I.candidates = [m.flagRoom]; logEvent(g, "flagfound", { team: t, id: p.id }); emit(g, "flagfound", FLAG.x, FLAG.y, { team: t, life: 2 }); break; }
+        I.candidates = I.candidates.filter(rid => {
+          if (rid === m.flagRoom) return true;
+          const r = m.rooms[rid];
+          for (const [ox, oy] of [[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]]) { const c = { x: r.cx + ox, y: r.cy + oy }; if (SOLID[cellAt(c.x, c.y)]) continue; if (dist(p, c) <= vr && lineClear(p.x, p.y, c.x, c.y)) return false; }
+          return true;
+        });
+        for (const it of m.items) if (it.kind === "emblem" && it.eliminates != null && I.candidates.includes(it.eliminates) && dist(p, it) <= vr && lineClear(p.x, p.y, it.x, it.y)) { I.candidates = I.candidates.filter(x => x !== it.eliminates); (I.emblems = I.emblems || []).push(it.id); logEvent(g, "emblem", { team: t, id: p.id }); }
+      }
+      if (!I.known && I.candidates.length <= 1) { I.known = true; I.floorKnown = true; I.candidates = [m.flagRoom]; logEvent(g, "flagfound", { team: t }); }
+    }
+  }
+  // Bot：旗が分かるまで候補の部屋を手分けして見に行く
+  // 探す部屋の「のぞく地点」：部屋の中心。ただし旗の上は踏まず、旗から3m手前で止まる（見つけた瞬間に掴んで終わらせない）
+  function lookPoint(r, p) {
+    if (Math.hypot(r.cx - FLAG.x, r.cy - FLAG.y) > 2.5) return { x: r.cx, y: r.cy };
+    const a = Math.atan2(p.y - FLAG.y, p.x - FLAG.x);
+    for (const d of [3.2, 2.6, 2.0]) for (const da of [0, 0.5, -0.5, 1, -1, 1.6, -1.6]) {
+      const x = FLAG.x + Math.cos(a + da) * d, y = FLAG.y + Math.sin(a + da) * d;
+      if (!SOLID[cellAt(x, y)] && floorAt(x, y) === floorAt(FLAG.x, FLAG.y)) return { x, y };
+    }
+    return { x: r.cx, y: r.cy };
+  }
+  function mirrorTie(team, r) {
+    const fl = m => m.floors.find(f => f.id === r.floor);
+    const f = fl(curMap); if (!f) return 0;
+    const rx = team === 0 ? r.cx - f.ox : f.ox + f.w - r.cx;
+    return rx + (r.cy - f.oy) / 100;
+  }
+  function searchTarget(g, p) {
+    const I = g.intel[p.team], m = curMap;
+    if (p.ai.searchRoom != null && I.candidates.includes(p.ai.searchRoom)) return lookPoint(m.rooms[p.ai.searchRoom], p);
+    const taken = new Set(g.players.filter(q => q.team === p.team && q !== p && q.ai && q.ai.phase === "search").map(q => q.ai.searchRoom));
+    let best = null, bd = 1e9;
+    const ci = (p.y | 0) * W + (p.x | 0);
+    for (const rid of I.candidates) {
+      const r = m.rooms[rid]; const f = field(p.team, r.cx, r.cy); const d = f[ci];
+      if (d < 0) continue;
+      // 同点は「自陣から見て手前・上」を選ぶ（青と橙で選び方を鏡にそろえる）
+      const cost = d + (taken.has(rid) ? 60 : 0) + mirrorTie(p.team, r) * 1e-4;
+      if (cost < bd) { bd = cost; best = rid; }
+    }
+    p.ai.searchRoom = best;
+    if (best == null) return FLAG;
+    return lookPoint(m.rooms[best], p);
+  }
+  // 旗が分かったら、ルートのうち旗へ近い側の地点から再開する
+  function resumeWp(g, p) {
+    const rt = routeFor(p), f = field(p.team, FLAG.x, FLAG.y), dp = f[(p.y | 0) * W + (p.x | 0)];
+    for (let i = 0; i < rt.pts.length; i++) { const q = rt.pts[i]; const d = f[(q.y | 0) * W + (q.x | 0)]; if (d >= 0 && dp >= 0 && d <= dp) return i; }
+    return rt.pts.length;
+  }
+  // 地図の状態（オンライン：鍵の扉・仕掛け扉・拾われた鍵）
+  function mapState(g) {
+    const m = g.map; if (!m || m.kind !== "castle") return null;
+    return { v: m.version, locks: m.locks.filter(l => l.open).map(l => l.id), mechs: m.mechs.map(me => me.open ? 1 : 0), taken: m.items.filter(it => it.taken).map(it => it.id) };
+  }
+  function applyMapState(g, ms) {
+    const m = g.map; if (!m || m.kind !== "castle" || !ms) return;
+    let changed = false;
+    for (const id of ms.locks || []) { const lk = m.locks[id]; if (lk && !lk.open) { lk.open = true; for (const [x, y] of lk.cells) m.rows[y][x] = "."; changed = true; } }
+    (ms.mechs || []).forEach((o, i) => { const me = m.mechs[i]; if (me && me.open !== !!o) { me.open = !!o; for (const [x, y] of me.cells) m.rows[y][x] = o ? "m" : "M"; changed = true; } });
+    for (const id of ms.taken || []) { const it = m.items[id]; if (it) it.taken = true; }
+    if (changed) mapChanged(m);
+  }
+
   // ---------- HP・露見・復帰 ----------
   function inSpawn(p) {
+    if (curMap.kind === "castle") return cellAt(p.x, p.y) === (p.team ? "O" : "B");
     const b = D.MAP.spawnBox;
     const x = p.team ? mirrorX(p.x) : p.x;
     return x >= b.x0 && x <= b.x1 + 1 && p.y >= b.y0 && p.y <= b.y1 + 1;
@@ -980,7 +1261,7 @@ const Sim = (() => {
       g.level[team]++;
       const L = g.level[team];
       logEvent(g, "levelup", { team, level: L });
-      emit(g, "levelup", FLAG.x, FLAG.y, { team, level: L, life: 2 });
+      for (const q of g.players) if (q.team === team && q.returning <= 0) emit(g, "levelup", q.x, q.y, { team, level: L, life: 2 });
       for (const p of g.players) if (p.team === team) { if (p.pendingLevel) choosePerk(g, p, null); p.pendingLevel = L; p.pickT = R.hp.pickSec; const old = p.hpMax; p.hpMax = R.hp.byLevel[L - 1]; if (p.exposed <= 0) p.hp = Math.min(p.hpMax, p.hp + (p.hpMax - old)); }
     }
   }
@@ -1224,6 +1505,7 @@ const Sim = (() => {
         }
       }
       if (o.kind === "gate" && o.exit && o.life <= EPS) o.dead = true;
+      if (o.kind === "phantom") { o.angle += (rng(g) - 0.5) * 0.6; const nx = o.x + Math.cos(o.angle) * o.speed * dt, ny = o.y + Math.sin(o.angle) * o.speed * dt; if (!blocked(nx, ny, 0.25, -1)) { o.x = nx; o.y = ny; } else o.angle += Math.PI / 2; }
     }
     if (g.objects.some(o => o.dead)) g.objects = g.objects.filter(o => !o.dead);
     if (g.camoMarks.length && g.elapsed - g.camoMarks[0].t > 30) g.camoMarks = g.camoMarks.filter(m => g.elapsed - m.t <= 30);
@@ -1243,7 +1525,7 @@ const Sim = (() => {
       if (o.kind === "thorns" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= (p.crouch ? 0.2 : 0.4) && !(o.last === p.id && g.elapsed - o.lastT < 3)) { o.last = p.id; o.lastT = g.elapsed; addMod(p, "fogTrail", o.revealSec, { src: "thornsTrail" }); emit(g, "footprint", p.x, p.y, { team: o.team, life: o.revealSec }); }
       if (o.kind === "trail" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= 0.5 && !(o.last === p.id && g.elapsed - o.lastT < 1.5)) { o.last = p.id; o.lastT = g.elapsed; setReveal(p, o.revealSec); unhide(g, p); }
       if (o.kind === "arrow" && o.team === p.team && dist(p, o) <= o.r) p.silentT = Math.max(p.silentT, o.silentSec);
-      if (o.kind === "zone_fog" && o.team !== p.team) {
+      if (o.kind === "zone_fog" && o.team !== p.team && !o.static) {
         o.inside = o.inside || {};
         const inside = dist(p, o) <= o.r;
         if (o.inside[p.id] && !inside) addMod(p, "fogTrail", o.trailSec);   // 外へ出た後も足跡が2秒残る
@@ -1286,6 +1568,7 @@ const Sim = (() => {
     return o;
   }
   function snapshot(g, viewerId) {
+    bindMap(g);
     bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     const players = [], sounds = [];
@@ -1294,7 +1577,7 @@ const Sim = (() => {
       const view = enemyView(v, p);
       if (view === "none") {
         const tk = trackDirFor(v, p);
-        if (p.pulse && p.returning <= 0) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen, trackDir: tk });
+        if (p.pulse && p.returning <= 0 && pulseShownTo(g, v)) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen, trackDir: tk });
         else if (p.lastSeen || tk != null) players.push({ id: p.id, team: p.team, char: p.char, ghost: true, lastSeen: p.lastSeen, trackDir: tk });
         if (audible(v, p)) sounds.push({ a: +Math.atan2(p.y - v.y, p.x - v.x).toFixed(2), d: +dist(v, p).toFixed(1) });
         continue;
@@ -1303,9 +1586,14 @@ const Sim = (() => {
       else { const o = pubPlayer(p, false, g, true); o.lastSeen = p.lastSeen; players.push(o); }
     }
     const shots = g.shots.filter(s => !v || s.team === v.team || (dist(v, s) < 22 && lineClear(v.x, v.y, s.x, s.y))).map(s => ({ id: s.id, team: s.team, x: +s.x.toFixed(2), y: +s.y.toFixed(2), angle: +s.angle.toFixed(2) }));
-    const objects = g.objects.filter(o => !o.dead && objVisible(g, v, o)).map(o => pubObject(o, v));
-    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds, objects, xp: g.xp, level: g.level };
+    const objects = g.objects.filter(o => !o.dead && o.kind !== "phantom" && objVisible(g, v, o)).map(o => pubObject(o, v));
+    if (v) for (const o of g.objects) if (o.kind === "phantom" && !o.dead && phantomAudible(v, o)) sounds.push({ a: +Math.atan2(o.y - v.y, o.x - v.x).toFixed(2), d: +dist(v, o).toFixed(1) });   // 幻灯：偽の足音
+    const I = v && g.intel ? g.intel[v.team] : null;
+    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds, objects, xp: g.xp, level: g.level,
+      ms: mapState(g), intel: I ? { known: I.known, floorKnown: !!I.floorKnown, cands: I.candidates, emblems: I.emblems || [] } : null, keys: v && g.keys ? g.keys[v.team] : 0, duration: g.duration };
   }
+  // 波紋は旗の4m以内でしか出ない＝城で旗の位置を伏せている間は、敵の波紋を見せると旗の部屋が分かってしまう
+  function pulseShownTo(g, v) { return curMap.kind !== "castle" || !v || !g.intel || !!g.intel[v.team].known; }
   function objVisible(g, v, o) {
     if (!v) return true;
     if (o.team === v.team) return true;
@@ -1321,23 +1609,28 @@ const Sim = (() => {
   }
   const PUBLIC_LOG = { start: 1, end: 1, overtime: 1, levelup: 1, pulse: 1, botTakeover: 1, "return": 1 };
   function logVisible(g, viewerId, l) {
+    bindMap(g);
     const v = g.players.find(p => p.id === viewerId);
     if (!v) return true;
-    if (l.type === "ping" || l.type === "perk" || l.type === "ult") return l.team === v.team;
-    if (l.team === v.team) return true;
+    if (l.type === "ping" || l.type === "perk" || l.type === "ult" || l.type === "flagfound" || l.type === "emblem" || l.type === "key") return l.team === v.team;
     const mine = id => { const q = id != null && g.players.find(p => p.id === id); return !!q && q.team === v.team; };
+    if (l.type === "pulse" && !pulseShownTo(g, v)) return mine(l.id);
+    if (l.team === v.team) return true;
     if (mine(l.id) || mine(l.by)) return true;
     if (l.type === "skill") { const c = g.players.find(p => p.id === l.id); return !!c && enemyView(v, c) !== "none"; }
     return !!PUBLIC_LOG[l.type];
   }
   // 効果は観戦者に関係あるものだけ（合図は味方のみ）
+  const PLAYER_FX = { portal: 1, shove: 1, unlock: 1, burn: 1, naruko: 1, lantern: 1, shrine: 1, key: 1 };
   function effectVisible(g, viewerId, e) {
+    bindMap(g);
     bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     if (!v) return true;
     if (e.type === "ping") return e.team === v.team;
     if (e.type === "win" || e.type === "overtime") return true;
     if (e.team === v.team) return true;
+    if (PLAYER_FX[e.type]) return dist(v, e) <= viewRangeOf(v) && lineClear(v.x, v.y, e.x, e.y);
     return dist(v, e) < 22 && lineClear(v.x, v.y, e.x, e.y);
   }
   function freshAi() {
@@ -1354,14 +1647,16 @@ const Sim = (() => {
   // 観戦側（人間）の可視情報：敵をどう描くか
   function enemyView(viewer, q) {
     if (q.returning > 0) return "none";
-    if (q.exposed > 0 && dist(viewer, q) <= R.viewRange && lineClear(viewer.x, viewer.y, q.x, q.y)) return "revealed";
+    if (q.exposed > 0 && dist(viewer, q) <= viewRangeOf(viewer) && lineClear(viewer.x, viewer.y, q.x, q.y)) return "revealed";
     if (q.reveal > 0) return "revealed";
     if (canSee(viewer, q)) return "seen";
     if (clothVisible(viewer, q)) return "cloth";
     return "none";
   }
 
-  return { R, D, W, H, TICK, FLAG, grid, SOLID, cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
+  return { R, D, TICK, SOLID, LOSBLOCK, LEGACY, get W() { return W; }, get H() { return H; }, get FLAG() { return FLAG; }, get grid() { return grid; }, get map() { return curMap; },
+    bindMap, rebuildDyn, pulseShownTo, mapFor, castleMap, intelFor, mapState, applyMapState, floorAt, viewRangeOf, phantomAudible, searchTarget, resumeWp, updateIntel, axisOf,
+    cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
     field, steer, createMatch, resetForRematch, makePlayer, setInput, netInput, snapshot, effectVisible, freshAi, assignAi, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor,
     useSkill, useUlt, choosePerk, addXp, hasPerk, balanceFor, balNow, skillCdFor, inZone, trackDirFor, bindDyn, logVisible, pathClear, get objects() { return DYN; } };
 })();

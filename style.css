@@ -164,7 +164,9 @@ body.show-keys .tp-card .tp-key { display: block; }
 .compass { display: inline-block; color: var(--brass); font-size: 20px; }
 .ot { display: none; background: var(--red); color: #fff; border-radius: 8px; padding: 1px 8px; font-size: 13px; font-weight: 700; }
 .ot.on { display: inline-block; }
-.hud-tag { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.hud-tag { font-size: 12px; color: var(--muted); margin-top: 2px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compass.dim { opacity: .3; }
+.dif-card small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
 .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: auto; }
 #minimap { width: 128px; height: 96px; border: 1px solid #ffffff33; border-radius: 6px; background: #0d1219; }
 .icon-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #ffffff33; background: rgba(21,34,43,.85); font-size: 22px; cursor: pointer; }

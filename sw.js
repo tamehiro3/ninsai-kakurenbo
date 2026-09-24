@@ -1,11 +1,11 @@
 // Service Worker: オフラインでも遊べるようにキャッシュする
 // 更新時は CACHE のバージョンと index.html の ?v=N を両方上げる
-const CACHE = "ninsai-kakurenbo-v5";
+const CACHE = "ninsai-kakurenbo-v6";
 const PAINTED = ["kohaku", "sakuya", "jin"];
 const VIEWS = ["quarter", "side", "back", "happy", "surprised"];
 const ALL = ["jin","sakuya","kohaku","shiba","kanaoni","oto","rotten","nagisa","anne","dan","hinanojoh","torika","atoza","hayate","uka","ganzi","yui","fuuta","rei","sattva","nekomata","janome","benten","karma","ichiya","nemu","karura","xiaolan","aum","konga","shion","seori","quon","magoichi","ibuki","oen","izuna","sekishusai","sasagane"];
 const CORE = [
-  "./", "./index.html", "./style.css?v=5", "./chars.js?v=5", "./balance.js?v=5", "./data.js?v=5", "./sim.js?v=5", "./render.js?v=5", "./net.js?v=5", "./game.js?v=5",
+  "./", "./index.html", "./style.css?v=6", "./chars.js?v=6", "./balance.js?v=6", "./castle.js?v=6", "./data.js?v=6", "./sim.js?v=6", "./render.js?v=6", "./net.js?v=6", "./game.js?v=6",
   "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png",
   "./img/chars/kohaku_neutral.png", "./img/chars/kohaku_focus.png", "./img/chars/kohaku_walk.png", "./img/chars/sakuya_crouch.png", "./img/chars/jin_crouch.png",
   "./img/sheets/kohaku_sheet.jpg", "./img/sheets/sakuya_jin_sheet.jpg",

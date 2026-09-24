@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- 城ダンジョンの見た目を確かめる検証用ページ（公開物ではない・Edgeヘッドレスで撮る）
+     python ninsai-kakurenbo/tools/castle_shot.py [seed] [difficulty] [type] [視点の選手] [秒]
+     ?seed=...&dif=normal&type=bamboo&view=0&sec=20 -->
+<html lang="ja"><head><meta charset="utf-8"><base href="../"><title>castle view</title>
+<style>
+  body { margin: 0; background: #0d1219; color: #f2e6c4; font: 13px "Yu Gothic UI", sans-serif; }
+  #wrap { display: grid; grid-template-columns: 960px 384px; gap: 8px; padding: 8px; }
+  #game { width: 960px; height: 540px; display: block; }
+  #brief { width: 384px; height: 288px; }
+  #mini { width: 256px; height: 192px; border: 1px solid #fff3; }
+  pre { margin: 0; white-space: pre-wrap; font-size: 11px; }
+</style></head><body>
+<div id="wrap"><canvas id="game"></canvas><div><canvas id="brief" width="384" height="288"></canvas><canvas id="mini" width="256" height="192"></canvas><pre id="info"></pre></div></div>
+<script src="chars.js"></script><script src="balance.js"></script><script src="castle.js"></script><script src="data.js"></script><script src="sim.js"></script><script src="render.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const dif = q.get("dif") || "normal", seed = q.get("seed") || "view", type = q.get("type") || undefined, view = +(q.get("view") || 0), sec = +(q.get("sec") || 20);
+  const roles = ["vanguard", "scout", "decoy"], players = [];
+  for (let t = 0; t < 2; t++) for (let i = 0; i < 3; i++) players.push({ id: `p${t}${i}`, team: t, char: (t * 3 + i * 5) % 39, bot: true, role: roles[i], slot: i, name: "p" + t + i });
+  const g = Sim.createMatch({ players, seed: 11, difficulty: dif, briefing: false, castle: { seed, difficulty: dif, type } });
+  const me = g.players[view];
+  Render.init(document.getElementById("game"), { footMarks: true, reduceMotion: true, zoom: +(q.get("zoom") || 1) });
+  await Render.loadAssets();
+  Render.drawBriefingMap(document.getElementById("brief"), me.team, { 0: "先行", 1: "索敵", 2: "陽動" }, g);
+  g.phase = "countdown"; g.timer = 0.1;
+  const until = q.get("until");   // "stair"＝階を移るまで進める
+  const f0 = Sim.floorAt(me.x, me.y);
+  for (let i = 0; i < sec * 30 && g.phase !== "finished"; i++) { Sim.step(g); if (until === "stair" && Sim.floorAt(me.x, me.y) !== f0 && i > 30) { for (let k = 0; k < 20; k++) Sim.step(g); break; } }
+  // 見たい物のそばへ視点を移す（at=fog|mech|push|lock|key|emblem|stair|trap|shrine）
+  const at = q.get("at");
+  if (at) {
+    const m = g.map; let pt = null;
+    if (at === "fog" && m.fogObjs.length) pt = m.fogObjs[0];
+    else if (at === "mech" && m.mechs.length) pt = { x: m.mechs[0].cells[0][0] + 0.5, y: m.mechs[0].cells[0][1] + 0.5 };
+    else if (at === "push" && m.pushes.length) pt = { x: m.pushes[0].cells[0][0] + 0.5, y: m.pushes[0].cells[0][1] + 0.5 };
+    else if (at === "lock" && m.locks.length) pt = { x: m.locks[0].cells[0][0] + 0.5, y: m.locks[0].cells[0][1] + 0.5 };
+    else if ((at === "key" || at === "emblem") && m.items.some(i => i.kind === at)) pt = m.items.find(i => i.kind === at);
+    else if (at === "stair" && m.portals.length) pt = { x: m.portals[0].x, y: m.portals[0].y };
+    else if (at === "trap" && m.traps.length) pt = { x: m.traps[0].cx + 0.5, y: m.traps[0].cy + 0.5 };
+    else if (at === "shrine") { for (let y = 0; y < m.H && !pt; y++) for (let x = 0; x < m.W; x++) if (m.rows[y][x] === "H") { pt = { x: x + 0.5, y: y + 0.5 }; break; } }
+    if (pt) {
+      let best = null, bd = 1e9;
+      for (let y = Math.max(0, (pt.y | 0) - 4); y <= Math.min(m.H - 1, (pt.y | 0) + 4); y++) for (let x = Math.max(0, (pt.x | 0) - 4); x <= Math.min(m.W - 1, (pt.x | 0) + 4); x++) {
+        const c = m.rows[y][x]; if (Sim.SOLID[c] || "^vzBO".includes(c)) continue; const d = Math.hypot(x + 0.5 - pt.x, y + 0.5 - pt.y) + (d0 => 0)(); if (d > 0.9 && d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5 }; }
+      }
+      if (best) { me.x = me.px = best.x; me.y = me.py = best.y; me.camo = 0; }
+    }
+  }
+  Render.draw(g, me, 1, 0.016);
+  Render.drawMinimap(document.getElementById("mini"), g, me);
+  const C = g.map.castle, fl = g.map.floors[Sim.floorAt(me.x, me.y)];
+  document.getElementById("info").textContent = [
+    `${C.typeName}（${C.typeTheme}）${C.diffName} ${C.floorsUsed.join("/")} 旗=${g.map.flagFloor} 生成試行${C.attempt}`,
+    `視点 ${me.id}（${me.role}）いま ${fl.id} 経過 ${g.elapsed.toFixed(1)}秒 phase=${g.phase}`,
+    `旗の情報（青） ${JSON.stringify(g.intel[0])}`,
+    `at=${at || '-'}　罠 ${g.map.traps.length} 押し壁 ${g.map.pushes.length} 鍵 ${g.map.items.filter(i => i.kind === "key").length} 旗印 ${g.map.items.filter(i => i.kind === "emblem").length} 鍵扉 ${g.map.locks.length} 仕掛け扉 ${g.map.mechs.length} 霧 ${g.map.fogObjs.length}`,
+  ].join("\n");
+  document.title = "done";
+})().catch(e => { document.getElementById("info").textContent = "ERROR " + e.stack; document.title = "error"; });
+</script></body></html>

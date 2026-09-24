@@ -13,13 +13,15 @@
   7. 39体の性能（balance.js：39体・能力値6軸の合計21・固有技39種で重複なし・系統は 影/技/護/選択・
      sim.js に全技の処理がある・data.js の CHARS に併合ずみ・HP/成長の正本が揃う）
   8. 部屋サーバー（worker/src の構文・sim_bundle.js が ESM として読める・最新の同梱か）
+  9. 城ダンジョン（castle.js：設計図の受け入れ条件10項目・再現性・左右対称・城型の巡回＝tools/castletest.js／
+     公開物に検証用ページや設計図が混ざらない）
 """
 import os, re, sys, json, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 OK, NG, WARN = "OK", "NG", "注意"
-MIN_VER = 5            # 2026-09-23：balance.js（HP・レベル・39体の性能）を足したときに v5 へ。これ未満なら古いキャッシュが残る
+MIN_VER = 6            # 2026-09-25：castle.js（城ダンジョン）を足したときに v6 へ。これ未満なら古いキャッシュが残る
 STAT_KEYS = ["spd", "camo", "atk", "def", "scout", "esc"]
 TREES = ["影", "技", "護"]
 results = []
@@ -79,22 +81,22 @@ def check_refs():
     add("index.html の参照ファイル", NG if missing else OK, "不足: " + ", ".join(missing) if missing else f"{len(refs)}件すべて実在")
     # balance.js は data.js が読み込み時に参照する（BALANCE）ので chars.js の後・data.js の前に読む
     scripts = re.findall(r'<script src="([^"?]+)(?:\?v=\d+)?"', html)
-    need = ("chars.js", "balance.js", "data.js", "sim.js")
+    need = ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js")
     order_ok = all(s in scripts for s in need) and [scripts.index(s) for s in need] == sorted(scripts.index(s) for s in need)
-    add("index.html の読み込み順（chars → balance → data → sim）", OK if order_ok else NG, " → ".join(scripts) if scripts else "script タグなし")
+    add("index.html の読み込み順（chars → balance → castle → data → sim → render）", OK if order_ok else NG, " → ".join(scripts) if scripts else "script タグなし")
     sw = rd("sw.js")
     core = re.findall(r'"\./([^"?]+)(?:\?v=\d+)?"', sw)
     miss_sw = [c for c in core if c and not os.path.exists(os.path.join(ROOT, c))]
     add("sw.js の CORE 直書き分", NG if miss_sw else OK, "不足: " + ", ".join(miss_sw) if miss_sw else f"{len(core)}件すべて実在")
-    core_need = [f for f in ("chars.js", "balance.js", "data.js", "sim.js", "render.js", "net.js", "game.js", "style.css", "index.html") if f not in core]
-    add("sw.js の CORE に主要ファイル（balance.js 含む）", NG if core_need else OK, "CORE に無い: " + ", ".join(core_need) if core_need else "chars/balance/data/sim/render/net/game/style/index が揃っている")
+    core_need = [f for f in ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "net.js", "game.js", "style.css", "index.html") if f not in core]
+    add("sw.js の CORE に主要ファイル（balance.js・castle.js 含む）", NG if core_need else OK, "CORE に無い: " + ", ".join(core_need) if core_need else "chars/balance/castle/data/sim/render/net/game/style/index が揃っている")
     ids = re.search(r'const ALL = \[(.*?)\];', sw)
     n_ids = len(re.findall(r'"([a-z]+)"', ids.group(1))) if ids else 0
     add("sw.js の39体リスト", OK if n_ids == 39 else NG, f"{n_ids}体")
 
 
 def check_safety():
-    files = ["index.html", "data.js", "balance.js", "game.js", "render.js", "sim.js", "chars.js"]
+    files = ["index.html", "data.js", "balance.js", "castle.js", "game.js", "render.js", "sim.js", "chars.js"]
     text = "\n".join(rd(f) for f in files)
     forbidden = ["ガチャ", "課金", "決済", "購入する", "クレジットカード", "パスワード", "Stripe", "paypal", "adsbygoogle", "<input type=\"text\"", "<textarea", "contenteditable"]
     hits = []
@@ -111,7 +113,7 @@ def check_safety():
     other = [u for u in urls if "ninja-dao.com" not in u and "workers.dev" not in u]
     add("外部リンク", NG if other else OK, "ninja-dao.com / workers.dev 以外: " + ", ".join(other) if other else f"ninja-dao.com と部屋サーバー（workers.dev）のみ（{len(urls)}件）")
     add("非公式表示", OK if "非公式ファンゲーム" in rd("index.html") else NG, "タイトル画面と利用表示に記載" if "非公式ファンゲーム" in rd("index.html") else "見当たらない")
-    fetches = re.findall(r"\bfetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon", "\n".join(rd(f) for f in ["game.js", "render.js", "sim.js", "data.js", "balance.js"]))
+    fetches = re.findall(r"\bfetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon", "\n".join(rd(f) for f in ["game.js", "render.js", "sim.js", "data.js", "balance.js", "castle.js"]))
     add("外部通信コード", NG if fetches else OK, f"{len(fetches)}件" if fetches else "game/render/sim/data/balance に fetch/XHR/WebSocket なし（通信は net.js＝合言葉の部屋サーバーだけ）")
     net = rd("net.js")
     urls_net = set(re.findall(r'https?://[^\s"\'<>)]+', net))
@@ -129,7 +131,7 @@ def check_pwa():
     v = int(list(vs_html)[0]) if len(vs_html) == 1 else 0
     same = len(vs_html) == 1 and vs_html == vs_sw and cache.endswith("v" + str(v))
     ok = same and v >= MIN_VER
-    why = "" if ok else ("（index/sw/CACHE の版がそろっていない）" if not same else f"（v{MIN_VER} 以上に上げる：balance.js 追加ぶんの古いキャッシュが残る）")
+    why = "" if ok else ("（index/sw/CACHE の版がそろっていない）" if not same else f"（v{MIN_VER} 以上に上げる：castle.js 追加ぶんの古いキャッシュが残る）")
     add("SWキャッシュ版と ?v= の一致", OK if ok else NG, f"CACHE={cache} index?v={sorted(vs_html)} sw?v={sorted(vs_sw)} 必要={MIN_VER}以上{why}")
 
 
@@ -144,7 +146,7 @@ CRITERIA = [
 
 
 def check_js():
-    files = ["chars.js", "balance.js", "data.js", "sim.js", "render.js", "game.js"]
+    files = ["chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "game.js"]
     js = "const fs=require('fs');for(const f of process.argv.slice(2)){new Function(fs.readFileSync(process.argv[1]+'/'+f,'utf8'));}console.log('ok')"
     r = node(["-e", js, ROOT] + files)
     add("JS構文（node）", OK if r.stdout.strip() == "ok" else NG, r.stderr.strip()[:200] if r.returncode else f"{len(files)}ファイル読み込み可（{'・'.join(files)}）")
@@ -240,16 +242,31 @@ def check_worker():
     dst = os.path.join(ROOT, "worker", "src", "sim_bundle.js")
     if not os.path.exists(dst):
         add("sim_bundle.js（同梱物）", NG, "無い：python tools/build_worker.py で作る"); return
-    js = "import * as m from './worker/src/sim_bundle.js'; const need=['Sim','DATA','CHARS_ALL','BALANCE']; const miss=need.filter(k=>!m[k]); console.log(miss.length?'missing:'+miss.join(','):'ok '+m.DATA.CHARS.length+' '+(m.DATA.CHARS.every(c=>c.stats&&c.skill)?'merged':'unmerged'));"
+    js = "import * as m from './worker/src/sim_bundle.js'; const need=['Sim','DATA','CHARS_ALL','BALANCE','Castle']; const miss=need.filter(k=>!m[k]); console.log(miss.length?'missing:'+miss.join(','):'ok '+m.DATA.CHARS.length+' '+(m.DATA.CHARS.every(c=>c.stats&&c.skill)?'merged':'unmerged'));"
     r = node(["--input-type=module", "-e", js])
     okb = r.stdout.strip().startswith("ok ") and r.stdout.strip().endswith("merged")
     add("sim_bundle.js を ESM として読める", OK if okb else NG, r.stdout.strip() if okb else (r.stdout.strip() + " " + r.stderr.strip().splitlines()[-1] if r.stderr.strip() else r.stdout.strip())[:200])
     try:
         import build_worker
         fresh = build_worker.build() == open(dst, encoding="utf-8").read()
-        add("sim_bundle.js が最新の同梱か", OK if fresh else WARN, "chars/balance/data/sim と一致" if fresh else "古い：python tools/build_worker.py を実行（★オンライン部屋サーバーを公開する.bat は自動で同梱し直す）")
+        add("sim_bundle.js が最新の同梱か", OK if fresh else WARN, "chars/balance/data/castle/sim と一致" if fresh else "古い：python tools/build_worker.py を実行（★オンライン部屋サーバーを公開する.bat は自動で同梱し直す）")
     except Exception as e:
         add("sim_bundle.js が最新の同梱か", WARN, f"確認できない: {e}")
+
+
+def check_castle():
+    r = node([os.path.join(ROOT, "tools", "castletest.js"), "30"])
+    lines = [l for l in r.stdout.splitlines() if l.strip()]
+    last = lines[-1] if lines else (r.stderr.strip()[:200] or "出力なし")
+    add("城ダンジョンの生成（設計図の受け入れ条件10項目・再現性・左右対称・城型の巡回）", OK if r.returncode == 0 else NG,
+        last + ("｜" + " / ".join(l for l in lines if l.startswith(("やさしい", "ふつう", "てごわい"))) if r.returncode == 0 else "｜" + " / ".join(l for l in lines if l.startswith("NG"))[:300]))
+    # 公開物に検証用ページ・ユーザー提供の設計図が混ざらない（.gitignore で除外されているか）
+    gi = rd(".gitignore")
+    leak = [f for f in ("docs/castle-dungeon-blueprint.txt", "docs/character-balance-blueprint.txt", "docs/hp-level-blueprint.txt") if f not in gi]
+    add("設計図を公開しない（.gitignore）", NG if leak else OK, "除外されていない: " + ", ".join(leak) if leak else "城・39体・HPの設計図3枚を除外ずみ")
+    # 検証用ページは端末の保存を消さない（公開されても遊ぶ人の記録を壊さない）
+    bad = [f for f in ("tools/castle_view.html", "tools/game_drive.html") if os.path.exists(os.path.join(ROOT, f)) and ("removeItem" in rd(f) or "localStorage.clear" in rd(f))]
+    add("検証用ページが保存を消さない", NG if bad else OK, ", ".join(bad) if bad else "castle_view / game_drive は localStorage を消さない")
 
 
 def main():
@@ -261,6 +278,7 @@ def main():
     check_js()
     check_balance()
     check_worker()
+    check_castle()
     ng = [r for r in results if r["判定"] == NG]
     if "--json" in sys.argv:
         print(json.dumps({"results": results, "ng": len(ng)}, ensure_ascii=False, indent=1))

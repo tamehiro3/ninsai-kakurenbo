@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- 本物のゲーム画面（index.html）を iframe で開いて、ひとり用の城の試合を自動で進めて撮る検証用ページ（公開物ではない）
+     http://localhost:8668/tools/game_drive.html?dif=normal&sec=15&w=844&h=390 -->
+<html lang="ja"><head><meta charset="utf-8"><title>drive</title>
+<style>body{margin:0;background:#000} iframe{border:0;display:block}</style></head><body>
+<iframe id="f" src="../index.html"></iframe>
+<script>
+const q = new URLSearchParams(location.search);
+const f = document.getElementById("f");
+f.style.width = (q.get("w") || 844) + "px"; f.style.height = (q.get("h") || 390) + "px";
+f.onload = () => setTimeout(() => {
+  const w = f.contentWindow, N = w.__ninsai;
+  N.buildLobby();
+  const dc = w.document.querySelector(`.dif-card[data-dif="${q.get("dif") || "normal"}"]`); if (dc) dc.click();
+  N.startMatch({ swap: false });
+  const g = N.g; g.timer = 0;
+  const me = N.me;
+  if (q.get("bot") !== "0") { me.bot = true; w.eval("Sim").assignAi(g, me); }
+  // 描画ループ（requestAnimationFrame）はヘッドレスでは進まないので、ここで直接すすめて描く
+  const sec = +(q.get("sec") || 12);
+  for (let i = 0; i < sec * 30 + 30 * 4 && g.phase !== "finished"; i++) { w.eval("Sim").step(g); N.consumeLog(); }
+  N.show("game"); w.eval("Render").resize();
+  w.eval("Render").draw(g, N.me, 1, 0.016);
+  w.eval("Render").drawMinimap(w.document.getElementById("minimap"), g, N.me);
+  N.updateHUD(0.2); N.updateHUD(0.2);
+  document.title = "done";
+}, 300);
+</script></body></html>

@@ -48,5 +48,31 @@ const storage = { get: async () => null, put: async () => {}, setAlarm: async ()
   const s = ws.m[0];
   ok(!s.players.some(p => p.id === "pA") && !s.log.some(l => l.type === "skill" || l.type === "ping"), `見えていない敵の技・合図はログに乗らない: ${JSON.stringify(s.log)}`);
 }
+// 3) 城ダンジョン：開始の知らせに城の spec が乗り、端末が同じ城を組み立てられる。再戦では別の城（直前と同じ城型は引かない）
+{
+  const msgs = [];
+  const mk = pid => ({ pid, send(s) { msgs.push(JSON.parse(s)); }, close() {}, serializeAttachment() {}, deserializeAttachment() { return { pid }; } });
+  const W = [mk("pA")];
+  const lobby = { code: "CAST", hostId: "pA", phase: "lobby", difficulty: "hard", players: [{ id: "pA", charId: "kohaku", team: 0, role: "vanguard", connected: true, name: "A" }] };
+  const r = new Room({ blockConcurrencyWhile: f => f(), storage: Object.assign({}, storage, { get: async () => lobby }), getWebSockets: () => W }, {});
+  await Promise.resolve(); await Promise.resolve();
+  r.startLoop = () => {};
+  r.lobby = lobby;
+  await r.startMatch();
+  const st = msgs.find(m => m.t === "start");
+  ok(st && st.castle && st.castle.seed && st.castle.type && st.castle.difficulty === "hard", `開始の知らせに城の spec: ${JSON.stringify(st && st.castle)}`);
+  const rowsOf = m => m.rows.map(x => x.join("")).join("|");
+  const local = Sim.castleMap(st.castle);
+  ok(r.g.map.kind === "castle" && rowsOf(local) === rowsOf(r.g.map), "端末が spec から同じ城を組み立てられる");
+  ok(r.g.duration === 360, `てごわいは6分: ${r.g.duration}`);
+  const types = [st.castle.type];
+  for (let i = 0; i < 6; i++) { r.g.phase = "finished"; msgs.length = 0; await r.rematch(false); const s2 = msgs.find(m => m.t === "start"); types.push(s2 && s2.castle && s2.castle.type); ok(s2 && rowsOf(Sim.castleMap(s2.castle)) === rowsOf(r.g.map), `再戦${i + 1}：端末とサーバーの城が一致`); }
+  ok(types.every((t, i) => i === 0 || t !== types[i - 1]), `同じ城型が続かない: ${types.join(",")}`);
+  ok(new Set(types.slice(0, 5)).size === 5, `5試合で5つの城型を一巡: ${types.join(",")}`);
+  // 途中参加（再接続）の全量スナップショットにも城の spec が乗る
+  const ws = { m: [], send(s) { this.m.push(JSON.parse(s)); }, deserializeAttachment: () => ({ pid: "pA" }) };
+  r.sendSnapshot(ws, "pA", true);
+  ok(ws.m[0] && ws.m[0].castle && ws.m[0].castle.seed === r.castle.seed && ws.m[0].ms, "再接続の全量スナップショットに城の spec と地図の状態");
+}
 console.log(`roomtest: OK ${pass} / NG ${fail}`);
 process.exit(fail ? 1 : 0);

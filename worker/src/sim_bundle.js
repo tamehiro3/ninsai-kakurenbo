@@ -2525,9 +2525,9 @@ const TREE_NAMES = BAL.treeNames;
 const charIndex = id => Math.max(0, CHARS.findIndex(c => c.id === id));
 
 const ROLES = [
-  { id: "vanguard", name: "先行", route: "north",  desc: "竹回廊で潜み、敵の見破りが切れた隙に旗へ" },
-  { id: "scout",    name: "索敵", route: "center", desc: "中央で敵の位置を見破り、入口が空いたら合図" },
-  { id: "decoy",    name: "陽動", route: "south",  desc: "反対側から印を投げて注意を引き、味方の時間を作る" },
+  { id: "vanguard", name: "先行", route: "north",  desc: "一の道で潜み、敵の見破りが切れた隙に旗へ" },
+  { id: "scout",    name: "索敵", route: "center", desc: "旗の間の入口で敵を見破り、空いたら合図" },
+  { id: "decoy",    name: "陽動", route: "south",  desc: "別の道から印を投げて注意を引き、味方の時間を作る" },
 ];
 
 const PINGS = [
@@ -2562,8 +2562,12 @@ const TUTORIAL = [
 ];
 
 const HOWTO = [
-  { h: "勝ち方", p: "青3人 対 橙3人。中央の城旗の範囲（半径1m）に入って「旗を掴む」を押す。先に成立させたチームの優勝。持ち帰りもポイントもない。" },
-  { h: "時間", p: "競技240秒。未取得なら60秒の延長（擬態は最大8秒・見破りの回復は6秒に短縮）。それでも未取得なら引き分け。" },
+  { h: "勝ち方", p: "青3人 対 橙3人。城のどこかにある旗の範囲（半径1m）に入って「旗を掴む」を押す。先に成立させたチームの優勝。持ち帰りもポイントもない。" },
+  { h: "時間", p: "やさしい4分・ふつう5分・てごわい6分。未取得なら60秒の延長（擬態は最大8秒・見破りの回復は6秒に短縮）。それでも未取得なら引き分け。" },
+  { h: "城ダンジョン", p: "試合ごとに地下〜5階の城が生まれる（竹影城・水鏡城・焔櫓城・絡繰城・月霧城の5種が順に巡る）。左右は鏡写しで、青と橙の旗までの道のりは同じ。▲▼の階段で上下へ、青い矢印の穴は一方通行の降下口。旗への道は2本以上（てごわいは3本）あり、鍵がなくても必ず行ける。" },
+  { h: "旗の情報", p: "やさしい＝旗の階と部屋が最初から分かる。ふつう＝旗の階だけ分かり、誰かが旗を見ると部屋が分かる。てごわい＝候補3室だけ分かる（点線）。旗印（青い小旗）を見つけると偽の候補が1つ消える。難易度で変わるのは地形と情報だけで、勝ち方・HP・固有技の強さは同じ。" },
+  { h: "罠と仕掛け", p: "罠はいつも見えていて、必ず迂回できる。鳴子（踏むと3秒だけ足跡が敵に見える）・急流（2m流されるがHPは減らない）・火鉢（8ダメージ・HP1未満にはならない・経験値なし）・押し壁（黄黒の帯。予告の1秒後に隣の部屋へ押す）・幻灯（偽の足音を4秒鳴らす）。回転壁・水門は時間で開閉し、敷居に人がいる間は閉まらない。" },
+  { h: "鍵・祠・櫓・窓", p: "鍵を拾うと近道の扉（金の鍵穴）を開けられる。スイッチで開く近道もある。赤い鳥居の祠で2秒静かに立つとHP+25（20秒に1回）。火見櫓の上は6m遠くまで見える。窓は通れないが向こうが見える。" },
   { h: "擬態", p: "竹（縦縞）・石（斑点）・木（横木目）の柄の上で止まり「布」を押すと0.8秒で布に包まれる。最大15秒、解除後6秒で再使用。柄の上を0.7m/sで忍び歩きできるが、布が揺れて気づかれやすい。柄の外へ出ると即解除。" },
   { h: "見破り", p: "前方100度・6mの扇。0.25秒後の向きで判定し、壁は貫通しない。当たった敵は3秒間、味方全員に輪郭が見える。空振りしても回復10秒。" },
   { h: "印投げとHP", p: "紙の印を投げる（弾速14m/s・射程8m・回復2.5秒）。当たると擬態解除＋発見3秒＋1秒減速＋HPが減る（基本34・攻撃/防御の能力値で増減）。HPは100（レベルで最大120）。被弾後0.6秒は無敵。HPが30未満だと擬態できない。撃破やポイントはない。" },
@@ -2596,17 +2600,1085 @@ return { RULES, MAP_ROWS, MAP, TEAMS, CHARS, charIndex, STAT_NAMES, TREES, TREE_
 })();
 
 
+// ===== castle.js（自動コピー・編集しない） =====
+// 忍彩かくれんぼ — 城ダンジョン生成（設計図 castle-dungeon-blueprint v1.3）
+// 地下1階〜5階・五つの城型・三段階の複雑さ。同じ seed からは必ず同じ城ができる（サーバーとスマホで同じ城を作る）。
+// 左半分（＋中央の列）だけを作って鏡に写す＝両陣営の距離・曲がり角は完全に同じ。採用条件を1つでも満たさない seed は捨てて作り直す。
+const Castle = (() => {
+  const MOD = 8;                 // 部屋モジュールは 8m 単位（内側 7m）
+  const GAP = 6;                 // 階と階のあいだの壁（音や範囲技が別の階へ届かない厚さ）
+  const SIGHT_MAX = 18;          // 18m を超える射線には遮蔽を置く
+  const FLOORS = ["B1", "1F", "2F", "3F", "4F", "5F"];
+  const FLOOR_LABEL = { B1: "地下1F", "1F": "1F", "2F": "2F", "3F": "3F", "4F": "4F", "5F": "5F" };
+  const FLOOR_TITLE = { B1: "地下", "1F": "大手門", "2F": "書院", "3F": "渡櫓", "4F": "軍議", "5F": "天守" };
+  const MODULES = {
+    B1: ["地下牢", "抜け穴", "貯水槽", "兵糧庫", "古井戸", "床下道"],
+    "1F": ["大手門", "中庭", "台所", "武具蔵", "厩口", "番所"],
+    "2F": ["大広間", "書院", "茶室", "回廊", "隠し間", "納戸"],
+    "3F": ["客殿", "弓廊下", "庭見台", "渡櫓", "鐘の間", "小天守"],
+    "4F": ["軍議の間", "宝物庫", "星見廊", "上層回廊", "破風の間", "守り櫓"],
+    "5F": ["天守最上階", "旗の間", "月見台", "最終回廊", "鯱の間", "天窓広間"],
+  };
+  const TYPES = [
+    { id: "bamboo", name: "竹影城", theme: "擬態と抜け道", features: "竹壁・床下通路・音の少ない縁側", trap: "naruko", trapName: "鳴子", trapDesc: "踏むと3秒だけ足跡が見える" },
+    { id: "water", name: "水鏡城", theme: "水路と開閉水門", features: "水路・開閉水門・浅瀬・渡り廊下", trap: "current", trapName: "急流", trapDesc: "2m押し流すがHPは減らさない" },
+    { id: "fire", name: "焔櫓城", theme: "縦移動と見通し", features: "吹抜け・火見櫓・短い螺旋階段", trap: "brazier", trapName: "火鉢", trapDesc: "8ダメージ。HP1未満にはならない" },
+    { id: "karakuri", name: "絡繰城", theme: "時間で変わる道", features: "回転壁・重り床・歯車廊下", trap: "pushwall", trapName: "押し壁", trapDesc: "別室へ押すがHPは減らさない" },
+    { id: "moon", name: "月霧城", theme: "情報と錯覚", features: "霧庭・似た部屋・月明かりの窓", trap: "lantern", trapName: "幻灯", trapDesc: "偽の足音を4秒鳴らす" },
+  ];
+  const DIFF = {
+    easy:   { name: "やさしい", floors: [3, 3], mc: 5, mr: 3, rooms: [7, 10], branches: [1, 2], paths: 2, flagInfo: "full",       duration: 240, deadMax: 0.4 },
+    normal: { name: "ふつう",   floors: [4, 5], mc: 7, mr: 3, rooms: [9, 13], branches: [2, 3], paths: 2, flagInfo: "floor",      duration: 300, deadMax: 0.35 },
+    hard:   { name: "てごわい", floors: [5, 6], mc: 7, mr: 4, rooms: [11, 16], branches: [3, 4], paths: 3, flagInfo: "candidates", duration: 360, deadMax: 0.35 },
+  };
+  // 移動を止めるマス／視線を止めるマス（窓 x は視線を通す）
+  const SOLID_MOVE = { "#": 1, "t": 1, "r": 1, "x": 1, "L": 1, "M": 1 };
+  const SOLID_LOS = { "#": 1, "t": 1, "r": 1, "L": 1, "M": 1 };
+  const TRAP_CH = { n: "naruko", c: "current", f: "brazier", l: "lantern", p: "pushwall" };
+
+  // ---------- 乱数（128bit seed：xmur3 → sfc32） ----------
+  function xmur3(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    return () => { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^= h >>> 16) >>> 0; };
+  }
+  function makeRng(str) {
+    const s = xmur3(String(str)); let a = s(), b = s(), c = s(), d = s();
+    const f = () => { a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0; let t = (a + b) | 0; a = b ^ (b >>> 9); b = (c + (c << 3)) | 0; c = (c << 21) | (c >>> 11); d = (d + 1) | 0; t = (t + d) | 0; c = (c + t) | 0; return (t >>> 0) / 4294967296; };
+    for (let i = 0; i < 12; i++) f();
+    return f;
+  }
+  // 五つの城型をシャッフルバッグで巡る（直前と同じ城は避ける）
+  function drawType(bag, last, seedStr) {
+    const rng = makeRng("bag:" + seedStr);
+    let b = Array.isArray(bag) ? bag.filter(id => TYPES.some(t => t.id === id)) : [];
+    if (!b.length) {
+      b = TYPES.map(t => t.id);
+      for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+      if (b[0] === last && b.length > 1) [b[0], b[1]] = [b[1], b[0]];
+    }
+    const type = b[0];
+    return { type, bag: b.slice(1) };
+  }
+
+  // ---------- 1回ぶんの生成 ----------
+  let lastFail = "";
+  function build(seedStr, diffKey, typeId) {
+    const fail = why => { lastFail = why; return null; };
+    const rng = makeRng(seedStr);
+    const P = DIFF[diffKey] || DIFF.normal;
+    const T = TYPES.find(t => t.id === typeId) || TYPES[0];
+    const ri = (a, b) => a + Math.floor(rng() * (b - a + 1));
+    const pick = arr => arr[Math.floor(rng() * arr.length)];
+    const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+    const MC = P.mc, MR = P.mr, cc = (MC - 1) / 2, FW = MC * MOD + 1, FH = MR * MOD + 1, AX = cc * MOD + 4;   // AX＝中央の列のまん中のマス（鏡の軸）
+    const k = P.paths;
+
+    // 1) 使う階と旗の階
+    let used;
+    if (diffKey === "easy") used = ["B1", "1F", "2F"];
+    else if (diffKey === "normal") { const pool = ["B1", "1F", "2F", "3F", "4F"]; if (ri(4, 5) === 5) used = pool; else { const omit = pick(["B1", "2F", "3F", "4F"]); used = pool.filter(f => f !== omit); } }
+    else { const n = ri(5, 6); if (n === 6) used = FLOORS.slice(); else { const omit = pick(["B1", "2F", "3F", "4F"]); used = FLOORS.filter(f => f !== omit); } }
+    used = FLOORS.filter(f => used.includes(f));
+    let flagFloor, candFloors = null;
+    // てごわい：候補3室を別々の階に置き、本物の旗はその3階のどれか（5Fとは限らない＝規則から当てられない）
+    // 候補の階は上の3階（2F以上・5Fを含む）＝開始階のすぐそばには旗を置かず、候補の階の選び方からも本物を当てられない
+    if (diffKey === "hard") { candFloors = used.filter(f => f !== "1F" && f !== "B1").slice(-3); flagFloor = pick(candFloors); }
+    else if (diffKey === "easy") flagFloor = pick(["B1", "2F"]);
+    else { const up = used.filter(f => f !== "1F"); flagFloor = rng() < 0.5 ? up[up.length - 1] : pick(up); }
+    const rs = Math.floor(MR / 2), rf = ri(0, MR - 1);
+    // てごわい：旗の候補3室（本物＋偽2）。偽は別の階の中央の列（両陣営から公平）
+    const fakeFloors = candFloors ? candFloors.filter(f => f !== flagFloor) : [];
+    const fakeRows = fakeFloors.map(() => ri(0, MR - 1));
+
+    // 2) 必須のモジュール（半分：c ≤ cc）
+    const key = (c, r) => c + "," + r;
+    const req = {}; used.forEach(f => { req[f] = new Set(); });
+    const inLat = (c, r) => c >= 0 && c <= cc && r >= 0 && r < MR;
+    req["1F"].add(key(0, rs));
+    for (const [dc, dr] of [[1, 0], [0, -1], [0, 1]]) if (inLat(dc, rs + dr)) req["1F"].add(key(dc, rs + dr));   // 開始部屋の出口を増やす
+    req[flagFloor].add(key(cc - 1, rf)); req[flagFloor].add(key(cc, rf));
+    if (cc - 2 >= 0) req[flagFloor].add(key(cc - 2, rf));
+    if (k >= 3) { const rr = rf > 0 ? rf - 1 : rf + 1; req[flagFloor].add(key(cc, rr)); }
+    fakeFloors.forEach((f, i) => { req[f].add(key(cc, fakeRows[i])); req[f].add(key(cc - 1, fakeRows[i])); });   // 偽の候補も本物と同じ3部屋幅（形で見分けられないように）
+    // 上下接続：隣り合う使用階ごとに、片側 k-1 本（焔櫓は+1）＋中央1本
+    const trans = [];
+    let prevMods = [];
+    for (let i = 0; i + 1 < used.length; i++) {
+      const a = used[i], b = used[i + 1];
+      // 開始部屋・旗の間・偽の候補の間（本物と同じく階段を置かない＝階段の有無で見分けられない）
+      const bad = (f, c, r) => (f === "1F" && c === 0 && r === rs) || (f === flagFloor && r === rf && c >= cc - 1) || fakeFloors.some((ff, i) => ff === f && r === fakeRows[i] && c >= cc - 1);
+      // 階段室を縦に積まない：前の上下接続（この階に着く口）から2部屋以上離す（だめなら1部屋）＝各階を歩いて渡る
+      // 開始部屋・旗の間のすぐ隣に上下接続を置かない（各階を歩かせる）
+      const awayFromKey = (c, r, need) => (!(a === "1F" || b === "1F") || Math.abs(c - 0) + Math.abs(r - rs) >= need) && (!(a === flagFloor || b === flagFloor) || Math.min(Math.abs(c - (cc - 1)), Math.abs(c - cc)) + Math.abs(r - rf) >= need);
+      const far = (c, r, need) => prevMods.every(m => Math.abs(m.c - c) + Math.abs(m.r - r) >= need) && awayFromKey(c, r, need);
+      const side = [];
+      const sc = k - 1 + (T.id === "fire" ? 1 : 0);
+      let guard = 0;
+      while (side.length < sc && guard++ < 400) {
+        const c = ri(0, cc - 1), r = ri(0, MR - 1);
+        if (bad(a, c, r) || bad(b, c, r) || side.some(m => m.c === c && m.r === r)) continue;
+        if (!far(c, r, guard < 200 ? 2 : 1)) continue;
+        side.push({ c, r, axis: false });
+      }
+      if (side.length < sc) return fail("L2s");
+      const arOpts = [];
+      for (let r = 0; r < MR; r++) if (!bad(a, cc, r) && !bad(b, cc, r)) arOpts.push(r);
+      const arFar = arOpts.filter(r => far(cc, r, 2)), arNear = arOpts.filter(r => far(cc, r, 1));
+      const arPool = arFar.length ? arFar : arNear;
+      if (!arPool.length) return fail("L2");
+      const ar = pick(arPool);
+      const mods = side.concat([{ c: cc, r: ar, axis: true }]);
+      for (const m of mods) { req[a].add(key(m.c, m.r)); req[b].add(key(m.c, m.r)); }
+      trans.push({ a, b, mods });
+      prevMods = mods;
+    }
+
+    // 3) 各階の部屋（半分を育てて鏡に写す）
+    const F = {};
+    for (const f of used) {
+      const HS = new Set(req[f]);
+      // 必須どうしをつなぐ
+      const list = [...HS];
+      const conn = new Set([list[0]]);
+      const bfsPath = (from, targetSet) => {
+        const prev = new Map([[from, null]]), q = [from];
+        for (let qi = 0; qi < q.length; qi++) {
+          const cur = q[qi]; if (targetSet.has(cur) && cur !== from) { const path = []; let x = cur; while (x) { path.push(x); x = prev.get(x); } return path; }
+          const [c, r] = cur.split(",").map(Number);
+          for (const [dc, dr] of shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]])) { const n = key(c + dc, r + dr); if (inLat(c + dc, r + dr) && !prev.has(n)) { prev.set(n, cur); q.push(n); } }
+        }
+        return null;
+      };
+      for (const m of list.slice(1)) { if (conn.has(m)) continue; const p = bfsPath(m, conn); if (p) p.forEach(x => { HS.add(x); conn.add(x); }); conn.add(m); }
+      // 大部屋（旗の間・偽の候補）は先に決める
+      const merges = [];
+      if (f === flagFloor) merges.push([key(cc - 1, rf), key(cc, rf)]);
+      fakeFloors.forEach((ff, i) => { if (ff === f) merges.push([key(cc - 1, fakeRows[i]), key(cc, fakeRows[i])]); });
+      const fixed = new Set(merges.flat());
+      // 部屋数＝大部屋をひとつと数え、鏡を含めて数える（設計図：1階あたりの部屋数）
+      const roomsNow = () => {
+        const par = new Map(); const fd = x => { while (par.get(x) !== x) x = par.get(x); return x; };
+        const full = [];
+        for (const m of HS) { const [c, r] = m.split(",").map(Number); full.push(key(c, r)); if (c !== cc) full.push(key(MC - 1 - c, r)); }
+        full.forEach(x => par.set(x, x));
+        for (const [a, b] of merges) { const [c1, r1] = a.split(",").map(Number), [c2, r2] = b.split(",").map(Number); for (const [p, q] of [[key(c1, r1), key(c2, r2)], [key(MC - 1 - c1, r1), key(MC - 1 - c2, r2)]]) if (par.has(p) && par.has(q) && fd(p) !== fd(q)) par.set(fd(p), fd(q)); }
+        return new Set(full.map(fd)).size;
+      };
+      const growCand = () => { const cand = []; for (const m of HS) { const [c, r] = m.split(",").map(Number); for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = key(c + dc, r + dr); if (inLat(c + dc, r + dr) && !HS.has(n) && !cand.includes(n)) cand.push(n); } } return cand; };
+      const N = ri(P.rooms[0], P.rooms[1]);
+      let g3 = 0;
+      while (roomsNow() < N && g3++ < 200) {
+        const cand = growCand();
+        if (!cand.length) break;
+        const n = pick(cand); const add = Number(n.split(",")[0]) === cc ? 1 : 2;
+        if (roomsNow() + add > P.rooms[1] && add === 2) { const ax = cand.find(x => Number(x.split(",")[0]) === cc); if (ax) { HS.add(ax); continue; } break; }
+        HS.add(n);
+      }
+      // 大部屋（吹抜け・大広間）
+      const spawnMod = m => f === "1F" && m === key(0, rs);
+      const nHall = T.id === "fire" ? ri(1, 2) : ri(0, 1);
+      for (let h = 0; h < nHall; h++) {
+        const opts = [];
+        for (const m of HS) { const [c, r] = m.split(",").map(Number); const n = key(c + 1, r); if (c + 1 < cc && HS.has(n) && !spawnMod(m) && !spawnMod(n) && !merges.some(p => p.includes(m) || p.includes(n))) opts.push([m, n]); }
+        if (opts.length) merges.push(pick(opts));
+      }
+      // 部屋数を範囲に収める：多ければ隣どうしをつないで大部屋に、少なければ部屋を足す
+      let g5 = 0;
+      while (g5++ < 80) {
+        const n = roomsNow();
+        if (n > P.rooms[1]) {
+          const opts = [];
+          for (const m of HS) { const [c, r] = m.split(",").map(Number); const nn = key(c + 1, r); if (c + 1 <= cc && HS.has(nn) && !spawnMod(m) && !spawnMod(nn) && !fixed.has(m) && !fixed.has(nn) && !merges.some(p => p.includes(m) && p.includes(nn))) opts.push([m, nn]); }
+          if (!opts.length) break;
+          merges.push(pick(opts)); continue;
+        }
+        if (n < P.rooms[0]) { const cand = growCand(); if (!cand.length) break; HS.add(pick(cand)); continue; }
+        break;
+      }
+      { const n = roomsNow(); if (n < P.rooms[0] || n > P.rooms[1]) return fail("L3n " + f + " " + n); }
+      // 通路：全域木＋分岐
+      const parent = new Map(); const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+      for (const m of HS) parent.set(m, m);
+      const unite = (a, b) => parent.set(find(a), find(b));
+      merges.forEach(([a, b]) => unite(a, b));
+      const isMerged = (a, b) => merges.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+      const all = [];
+      for (const m of HS) {
+        const [c, r] = m.split(",").map(Number);
+        const h = key(c + 1, r), v = key(c, r + 1);
+        if (c + 1 <= cc && HS.has(h) && !isMerged(m, h)) all.push({ a: m, b: h, dir: "h", c, r });
+        if (HS.has(v)) all.push({ a: m, b: v, dir: "v", c, r });
+      }
+      shuffle(all);
+      const edges = [], pool = [];
+      for (const e of all) { if (find(e.a) !== find(e.b)) { unite(e.a, e.b); e.kind = "door"; e.tree = true; edges.push(e); } else pool.push(e); }
+      // 半分の連結を確認（鏡で右もつながる）
+      const r0 = find([...HS][0]); if ([...HS].some(m => find(m) !== r0)) return fail("L4");
+      const nb = ri(P.branches[0], P.branches[1]);
+      for (let i = 0; i < nb && pool.length; i++) { const e = pool.shift(); e.kind = "door"; e.branch = true; edges.push(e); }
+      F[f] = { id: f, HS, merges, edges, pool, stairs: [], portals: [], traps: [], items: [], fogs: [], locks: [], mechs: [], push: [], reserved: new Set(), doorCells: new Set(), feat: new Map() };
+    }
+    // 開始部屋・旗の間の出入口を k 本以上に
+    const incident = (Fl, m) => Fl.edges.filter(e => e.a === m || e.b === m);
+    const forceEdges = (Fl, mods, need) => {
+      const inc = () => Fl.edges.filter(e => mods.includes(e.a) !== mods.includes(e.b)).length;
+      while (inc() < need) { const i = Fl.pool.findIndex(e => mods.includes(e.a) !== mods.includes(e.b)); if (i < 0) break; const e = Fl.pool.splice(i, 1)[0]; e.kind = "door"; e.forced = true; Fl.edges.push(e); }
+    };
+    forceEdges(F["1F"], [key(0, rs)], k);
+    forceEdges(F[flagFloor], [key(cc - 1, rf), key(cc, rf)], k >= 3 ? 2 : 1);   // 半分で片側1〜2本＝鏡で2〜4本
+
+    // 4) 部屋グラフで独立経路（辺素なパス）を確かめる。足りなければ分岐を足す
+    const floorIdx = f => used.indexOf(f);
+    const flowVal = () => {
+      const G = moduleGraph(used, F, trans, cc, MR, key);
+      const s = G.nodeOf("1F", 0, rs), t = G.nodeOf(flagFloor, cc, rf);
+      return maxFlow(G.n, G.edges, s, t);
+    };
+    const flowOK = () => flowVal() >= k;
+    let fg = 0;
+    while (!flowOK() && fg++ < 40) {
+      const opt = used.filter(f => F[f].pool.length); if (!opt.length) return fail("L5 flow=" + flowVal() + " used=" + used.join("") + " flag=" + flagFloor);
+      const Fl = F[pick(opt)]; const e = Fl.pool.splice(Math.floor(rng() * Fl.pool.length), 1)[0]; e.kind = "door"; e.branch = true; Fl.edges.push(e);
+    }
+    if (!flowOK()) return fail("L6");
+    // 分岐の一部を仕掛けの扉に（旗への必須にしない＝独立経路は通常の扉だけで満たしてある）
+    for (const f of used) {
+      const Fl = F[f];
+      // 水鏡城・絡繰城は仕掛け扉が城の顔＝各階に分岐の扉を1本足して、必ず仕掛けを置ける余地を作る
+      if ((T.id === "karakuri" || T.id === "water") && Fl.pool.length) { const e = Fl.pool.splice(Math.floor(rng() * Fl.pool.length), 1)[0]; e.kind = "door"; e.branch = true; Fl.edges.push(e); }
+      const br = Fl.edges.filter(e => e.branch && !e.forced);
+      shuffle(br);
+      let used2 = 0;
+      const tryKind = (kind) => { for (const e of br) { if (e.kind !== "door") continue; const old = e.kind; e.kind = kind; if (flowOK()) { used2++; return e; } e.kind = old; } return null; };
+      if (diffKey !== "easy" && rng() < 0.7) tryKind("locked");
+      if (T.id === "bamboo") tryKind("crawl");
+      if (T.id === "karakuri" || T.id === "water") { const e1 = tryKind("mech"); if (e1) e1.group = 0; if (T.id === "karakuri") { const e2 = tryKind("mech"); if (e2) e2.group = 1; } }
+    }
+    // 袋小路を上限内に（行き止まりの部屋が多すぎれば分岐を足す）
+    for (const f of used) {
+      const Fl = F[f];
+      const dead = () => [...Fl.HS].filter(m => roomDegree(Fl, m, trans, f, key) <= 1);
+      let g4 = 0;
+      while (dead().length * 2 > Math.ceil(P.deadMax * countRooms(Fl, cc)) + 1 && g4++ < 10) {
+        const d = dead(); const i = Fl.pool.findIndex(e => d.includes(e.a) || d.includes(e.b)); if (i < 0) break;
+        const e = Fl.pool.splice(i, 1)[0]; e.kind = "door"; e.branch = true; Fl.edges.push(e);
+      }
+    }
+
+    // 5) マス目を刻む（左半分＋軸）
+    for (const f of used) {
+      const Fl = F[f];
+      const cells = Fl.cells = Array.from({ length: FH }, () => Array(FW).fill("#"));
+      const set = (x, y, ch) => { if (x <= AX) cells[y][x] = ch; };
+      for (const m of Fl.HS) {
+        const [c, r] = m.split(",").map(Number);
+        for (let y = r * MOD + 1; y <= r * MOD + MOD - 1; y++) for (let x = c * MOD + 1; x <= Math.min(c * MOD + MOD - 1, AX); x++) cells[y][x] = ".";
+      }
+      for (const [a, b] of Fl.merges) {
+        const [c, r] = a.split(",").map(Number), wx = (c + 1) * MOD;
+        for (let y = r * MOD + 1; y <= r * MOD + MOD - 1; y++) set(wx, y, ".");
+      }
+      const wallOff = new Map();
+      const pickOff = (keys, w1) => {
+        const opts = []; for (let o = 1; o <= (w1 ? 7 : 6); o++) if (keys.every(kk => !wallOff.has(kk) || Math.abs(wallOff.get(kk) - o) >= 3)) opts.push(o);
+        return opts.length ? pick(opts) : ri(1, w1 ? 7 : 6);
+      };
+      for (const e of Fl.edges) {
+        const ch = e.kind === "crawl" ? "u" : e.kind === "locked" ? "L" : e.kind === "mech" ? "m" : ".";
+        const w1 = e.kind === "crawl";
+        const cellsE = [];
+        if (e.dir === "h") {
+          const o = pickOff(["h:" + (e.c - 1) + ":" + e.r, "h:" + (e.c + 1) + ":" + e.r], w1); wallOff.set("h:" + e.c + ":" + e.r, o);
+          const wx = (e.c + 1) * MOD; for (let i = 0; i < (w1 ? 1 : 2); i++) cellsE.push([wx, e.r * MOD + o + i]);
+        } else {
+          const wy = (e.r + 1) * MOD;
+          if (e.c === cc) {
+            // 中央の列：まん中の扉と、左右対称の二つ扉を段ごとに交互に（縦に一直線に並ばない）
+            if (e.r % 2 === 0) { if (w1) cellsE.push([AX, wy]); else cellsE.push([AX - 1, wy], [AX, wy]); }
+            else { if (w1) cellsE.push([AX - 2, wy]); else cellsE.push([AX - 3, wy], [AX - 2, wy]); }
+          } else {
+            const o = pickOff(["v:" + e.c + ":" + (e.r - 1), "v:" + e.c + ":" + (e.r + 1)], w1); wallOff.set("v:" + e.c + ":" + e.r, o);
+            for (let i = 0; i < (w1 ? 1 : 2); i++) cellsE.push([e.c * MOD + o + i, wy]);
+          }
+        }
+        e.cells = cellsE;
+        for (const [x, y] of cellsE) { set(x, y, ch); Fl.doorCells.add(x + "," + y); }
+        if (e.kind === "locked") Fl.locks.push({ edge: e, cells: cellsE });
+        if (e.kind === "mech") Fl.mechs.push({ edge: e, cells: cellsE, group: e.group | 0 });
+      }
+      // 扉の前後1マスは空けておく（階段・仕掛けを置かない）
+      for (const dc of Fl.doorCells) { const [x, y] = dc.split(",").map(Number); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) Fl.reserved.add((x + dx) + "," + (y + dy)); }
+      // 開始部屋＝陣地
+      if (f === "1F") for (let y = rs * MOD + 1; y <= rs * MOD + MOD - 1; y++) for (let x = 1; x <= MOD - 1; x++) cells[y][x] = "B";
+      // 旗のまわり3m＝砂（擬態できない）
+      if (f === flagFloor) {
+        const fx = AX + 0.5, fy = rf * MOD + 4.5;
+        for (let y = rf * MOD + 1; y <= rf * MOD + MOD - 1; y++) for (let x = (cc - 1) * MOD + 1; x <= AX; x++) if (Math.hypot(x + 0.5 - fx, y + 0.5 - fy) <= 3.2 && cells[y][x] === ".") { cells[y][x] = "~"; Fl.reserved.add(x + "," + y); }
+        Fl.flag = { x: fx, y: fy };
+      }
+      fakeFloors.forEach((ff, i) => {
+        if (ff !== f) return;
+        const fx = AX + 0.5, fy = fakeRows[i] * MOD + 4.5;
+        for (let y = fakeRows[i] * MOD + 1; y <= fakeRows[i] * MOD + MOD - 1; y++) for (let x = (cc - 1) * MOD + 1; x <= AX; x++) if (Math.hypot(x + 0.5 - fx, y + 0.5 - fy) <= 3.2 && cells[y][x] === ".") Fl.reserved.add(x + "," + y);
+      });
+    }
+    // 上下接続のマス（下の階＝登り口 ^、上の階＝降り口 v）
+    const plain = (f, x, y) => { const Fl = F[f]; return x >= 0 && y >= 0 && x <= AX && y < FH && Fl.cells[y][x] === "." && !Fl.reserved.has(x + "," + y); };
+    const reserve = (f, x, y) => F[f].reserved.add(x + "," + y);
+    const SIDE_OFF = [[2, 2], [6, 2], [2, 6], [6, 6], [2, 4], [6, 4], [4, 2], [4, 6]];
+    const AXIS_OFF = [[4, 2], [4, 6], [4, 3], [4, 5]];
+    for (const tr of trans) {
+      for (const m of tr.mods) {
+        const offs = m.axis ? AXIS_OFF : shuffle(SIDE_OFF.slice());
+        const dirs = m.axis ? [[0, 1], [0, -1]] : shuffle([[0, 1], [0, -1], [1, 0], [-1, 0]]);
+        let ok = false;
+        for (const [ox, oy] of offs) {
+          const x = m.axis ? AX : m.c * MOD + ox, y = m.r * MOD + oy;
+          if (!plain(tr.a, x, y) || !plain(tr.b, x, y)) continue;
+          for (const [dx, dy] of dirs) {
+            const ax2 = x + dx, ay2 = y + dy;
+            if (!plain(tr.a, ax2, ay2) || !plain(tr.b, ax2, ay2)) continue;
+            F[tr.a].cells[y][x] = "^"; F[tr.b].cells[y][x] = "v";
+            const kind = m.axis ? "階段" : T.id === "fire" ? "螺旋階段" : pick(["階段", "梯子", "昇降機"]);
+            F[tr.a].portals.push({ x, y, toFloor: tr.b, tx: ax2 + 0.5, ty: ay2 + 0.5, kind, dir: "up" });
+            F[tr.b].portals.push({ x, y, toFloor: tr.a, tx: ax2 + 0.5, ty: ay2 + 0.5, kind, dir: "down" });
+            for (const f of [tr.a, tr.b]) { for (let yy = -1; yy <= 1; yy++) for (let xx = -1; xx <= 1; xx++) reserve(f, x + xx, y + yy); reserve(f, ax2, ay2); }
+            ok = true; break;
+          }
+          if (ok) break;
+        }
+        if (!ok) return fail("L8");
+      }
+      // 降下幕（上の階から下の階への一方通行・追加の近道）
+      if (diffKey !== "easy" && rng() < 0.5) {
+        // 旗の間・偽の候補の間（とその隣）には置かない＝候補の見た目をそろえる
+        const nearCand = (f, c, r) => (f === flagFloor && r === rf && c >= cc - 2) || fakeFloors.some((ff, i) => ff === f && r === fakeRows[i] && c >= cc - 2);
+        const Fb = F[tr.b], opts = [...Fb.HS].filter(m => { const [c, r] = m.split(",").map(Number); return F[tr.a].HS.has(m) && c < cc && !nearCand(tr.a, c, r) && !nearCand(tr.b, c, r); });
+        shuffle(opts);
+        for (const m of opts) {
+          const [c, r] = m.split(",").map(Number); const x = c * MOD + 4, y = r * MOD + 4;
+          if (!plain(tr.b, x, y) || !plain(tr.a, x, y)) continue;
+          Fb.cells[y][x] = "z"; Fb.portals.push({ x, y, toFloor: tr.a, tx: x + 0.5, ty: y + 0.5, kind: "降下幕", dir: "drop", oneWay: true });
+          reserve(tr.b, x, y); reserve(tr.a, x, y); break;
+        }
+      }
+    }
+
+    // 6) ダンジョン性：擬態帯・城型の特徴・罠（すべて予告つき・迂回できる）
+    for (const f of used) {
+      const Fl = F[f];
+      const modsL = [...Fl.HS].map(m => m.split(",").map(Number));
+      const isSpawn = (c, r) => f === "1F" && c === 0 && r === rs;
+      const inFlagRoom = (c, r) => f === flagFloor && r === rf && c >= cc - 1;
+      const rect = (c, r) => ({ x0: c * MOD + 1, y0: r * MOD + 1, x1: Math.min(c * MOD + MOD - 1, AX), y1: r * MOD + MOD - 1 });
+      const patch = (c, r, w, h, ch, tries) => {
+        const R = rect(c, r);
+        for (let t = 0; t < (tries || 12); t++) {
+          const x0 = ri(R.x0, Math.max(R.x0, R.x1 - w + 1)), y0 = ri(R.y0, Math.max(R.y0, R.y1 - h + 1));
+          const cellsP = [];
+          let okp = true;
+          for (let y = y0; y < y0 + h && okp; y++) for (let x = x0; x < x0 + w; x++) { if (x > AX || !plain(f, x, y)) { okp = false; break; } cellsP.push([x, y]); }
+          if (!okp) continue;
+          for (const [x, y] of cellsP) { Fl.cells[y][x] = ch; reserve(f, x, y); }
+          return cellsP;
+        }
+        return null;
+      };
+      const pats = T.id === "bamboo" ? ["b", "b", "b", "s"] : ["b", "s", "w"];
+      for (const [c, r] of modsL) {
+        if (isSpawn(c, r)) continue;
+        const n = (T.id === "bamboo" ? 2 : 1) + (rng() < 0.4 ? 1 : 0);
+        for (let i = 0; i < n; i++) { const vert = rng() < 0.5; patch(c, r, vert ? 2 : 3, vert ? 3 : 2, pick(pats)); }
+      }
+      const rooms2 = modsL.filter(([c, r]) => !isSpawn(c, r) && !inFlagRoom(c, r) && !(f === flagFloor && r === rf && c === cc - 2));
+      shuffle(rooms2);
+      const trapHere = (c, r) => !inFlagRoom(c, r);
+      const nTrap = diffKey === "easy" ? 1 : 2;
+      let placed = 0;
+      for (const [c, r] of rooms2) {
+        if (placed >= nTrap) break;
+        if (!trapHere(c, r)) continue;
+        if (T.trap === "pushwall") {
+          // 押し壁：扉の手前に立つと、予告ののち扉の向こうの部屋へ押し出される
+          const nearBase = m2 => f === "1F" && Fl.edges.some(e2 => (e2.a === m2 && e2.b === key(0, rs)) || (e2.b === m2 && e2.a === key(0, rs)));
+          // 通り道の扉でも、その扉を通らずに階の部屋をすべて回れる（迂回路がある）なら置ける
+          const bypass = e0 => {
+            const adj = new Map([...Fl.HS].map(m => [m, []]));
+            for (const e2 of Fl.edges) if (e2 !== e0 && (e2.kind === "door" || e2.kind === "crawl") && adj.has(e2.a) && adj.has(e2.b)) { adj.get(e2.a).push(e2.b); adj.get(e2.b).push(e2.a); }
+            for (const [a2, b2] of Fl.merges) if (adj.has(a2) && adj.has(b2)) { adj.get(a2).push(b2); adj.get(b2).push(a2); }
+            const st = [...Fl.HS][0], seen = new Set([st]), q = [st];
+            while (q.length) { const x = q.pop(); for (const y of adj.get(x)) if (!seen.has(y)) { seen.add(y); q.push(y); } }
+            return seen.size === Fl.HS.size;
+          };
+          const doors = Fl.edges.filter(e => e.kind === "door" && (e.cells.length >= 2 || !e.tree || bypass(e)) && !e.pushed && (e.a === key(c, r) || e.b === key(c, r)) && e.dir === "h" && e.c + 1 <= cc && !nearBase(e.a) && !nearBase(e.b) && e.a !== key(0, rs) && e.b !== key(0, rs));
+          if (!doors.length) continue;
+          const e = pick(doors); const wx = e.cells[0][0];
+          const fromLeft = e.a === key(c, r);   // この部屋が扉の左側なら右へ押す
+          const sx = fromLeft ? wx - 1 : wx + 1, dir = fromLeft ? 1 : -1;
+          if (sx > AX || wx + dir * 2 > AX) continue;
+          // 迂回路のない扉は、幅の1マスを空けて置く（押し壁の帯を踏まずに通れる）
+          const lane = (e.tree && !bypass(e)) ? e.cells.slice(0, e.cells.length - 1) : e.cells;
+          if (!lane.length) continue;
+          const strip = lane.map(([x, y]) => [sx, y]);
+          const land = lane.map(([x, y]) => [wx + dir * 2, y]);
+          if (!strip.every(([x, y]) => Fl.cells[y][x] === "." ) || !land.every(([x, y]) => x <= AX && ".bsw".includes(Fl.cells[y][x]))) continue;
+          for (const [x, y] of strip) Fl.cells[y][x] = "p";
+          e.pushed = true;   // 同じ扉の両側には置かない
+          Fl.push.push({ cells: strip, dx: dir * 3, dy: 0 });
+          placed++;
+          continue;
+        }
+        const ch = { naruko: "n", current: "c", brazier: "f", lantern: "l" }[T.trap];
+        const vert = rng() < 0.5;
+        const cellsT = patch(c, r, T.trap === "current" ? (vert ? 1 : 3) : (vert ? 1 : 2), T.trap === "current" ? (vert ? 3 : 1) : (vert ? 2 : 1), ch, 16);
+        if (!cellsT) continue;
+        let dir = T.trap === "current" ? (vert ? [0, rng() < 0.5 ? 1 : -1] : [rng() < 0.5 ? 1 : -1, 0]) : null;
+        if (dir && dir[0] !== 0 && cellsT.some(([x]) => x >= AX)) dir = [0, rng() < 0.5 ? 1 : -1];
+        for (const [x, y] of cellsT) Fl.traps.push({ kind: T.trap, x, y, dir });
+        placed++;
+      }
+      // 城型の特徴
+      if (T.id === "bamboo") { const [c, r] = pick(rooms2.length ? rooms2 : modsL); const R = rect(c, r); for (let x = R.x0; x <= R.x1; x++) if (plain(f, x, R.y1)) { Fl.cells[R.y1][x] = "q"; reserve(f, x, R.y1); } }   // 縁側（足音が小さい）
+      if (T.id === "water") for (const [c, r] of rooms2.slice(0, 2)) patch(c, r, 3, 3, "=", 10);                                                                                      // 浅瀬（遅くなる）
+      if (T.id === "fire") for (const [c, r] of rooms2.slice(0, 1)) { const R = rect(c, r); for (const [x, y] of [[R.x0, R.y0], [R.x1, R.y0], [R.x0, R.y1], [R.x1, R.y1]]) if (plain(f, x, y)) { Fl.cells[y][x] = "y"; reserve(f, x, y); break; } }   // 火見櫓（遠くまで見える）
+      if (T.id === "moon") for (const [c, r] of rooms2.slice(0, 2)) { const R = rect(c, r); const cx = (R.x0 + R.x1 + 1) / 2, cy = (R.y0 + R.y1 + 1) / 2; if (cx + 2.2 < AX + 0.5) Fl.fogs.push({ x: cx, y: cy, r: 2.2 }); }   // 霧庭（視線を遮る）
+      if (T.id === "moon" || T.id === "water") {   // 月明かりの窓・渡り廊下の窓（通れないが見える）
+        const walls = [];
+        for (const m of Fl.HS) { const [c, r] = m.split(",").map(Number); const n = key(c + 1, r); if (c + 1 <= cc && Fl.HS.has(n) && !Fl.edges.some(e => (e.a === m && e.b === n) || (e.a === n && e.b === m)) && !Fl.merges.some(p => p.includes(m) && p.includes(n))) walls.push([c, r]); }
+        shuffle(walls);
+        for (const [c, r] of walls.slice(0, 2)) { const wx = (c + 1) * MOD, y = r * MOD + ri(2, 5); if (wx <= AX && Fl.cells[y][wx] === "#" && Fl.cells[y + 1][wx] === "#") { Fl.cells[y][wx] = "x"; Fl.cells[y + 1][wx] = "x"; } }
+      }
+      // 袋小路には鍵・偵察窓・回復地点・近道スイッチのどれかを置く
+      const deadMods = modsL.filter(([c, r]) => !isSpawn(c, r) && !inFlagRoom(c, r) && roomDegree(Fl, key(c, r), trans, f, key) <= 1);
+      for (const [c, r] of deadMods) {
+        const R = rect(c, r), cx = Math.min(R.x1, (R.x0 + R.x1) >> 1), cy = (R.y0 + R.y1) >> 1;
+        const spots = []; for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (plain(f, x, y)) spots.push([x, y, Math.abs(x - cx) + Math.abs(y - cy)]);
+        spots.sort((p, q) => p[2] - q[2]);
+        if (!spots.length) continue;
+        const [x, y] = spots[0];
+        const lockNoSwitch = Fl.locks.find(l => !l.sw);
+        const roll = rng();
+        let feat;
+        if (lockNoSwitch && roll < 0.3) { Fl.cells[y][x] = "S"; lockNoSwitch.sw = [x, y]; feat = "switch"; }
+        else if (roll < 0.6) { Fl.items.push({ kind: "key", x: x + 0.5, y: y + 0.5 }); feat = "key"; }
+        else if (roll < 0.8) { Fl.cells[y][x] = "H"; feat = "shrine"; }
+        else {
+          // 偵察窓：扉のない隣の部屋との壁に窓をあける
+          const linked = (a, b) => Fl.edges.some(e => (e.a === a && e.b === b) || (e.a === b && e.b === a)) || Fl.merges.some(p2 => p2.includes(a) && p2.includes(b));
+          const nbr = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dc, dr]) => [c + dc, r + dr]).find(([c2, r2]) => inLat(c2, r2) && Fl.HS.has(key(c2, r2)) && !linked(key(c, r), key(c2, r2)));
+          let win = null;
+          if (nbr) {
+            const [c2, r2] = nbr;
+            if (c2 !== c) { const wx = Math.max(c, c2) * MOD, yy = r * MOD + ri(2, 5); win = [[wx, yy], [wx, yy + 1]]; }
+            else { const wy = Math.max(r, r2) * MOD, xx = c === cc ? AX - 1 : c * MOD + ri(2, 5); win = [[xx, wy], [xx + 1, wy]].filter(([x2]) => x2 <= AX); }
+            if (!win.every(([x2, y2]) => x2 <= AX && Fl.cells[y2][x2] === "#")) win = null;
+          }
+          if (win) { for (const [x2, y2] of win) Fl.cells[y2][x2] = "x"; feat = "window"; }
+          else { Fl.cells[y][x] = "H"; feat = "shrine"; }
+        }
+        reserve(f, x, y);
+        Fl.feat.set(key(c, r), feat);
+      }
+    }
+    // てごわい：旗印（見つけた陣営は偽の候補を1つ消せる）
+    if (diffKey === "hard") {
+      const emblemFloors = used.filter(f => f !== flagFloor && f !== "1F");
+      for (let i = 0; i < fakeFloors.length; i++) {
+        const f = pick(emblemFloors), Fl = F[f];
+        const mods = [...Fl.HS].map(m => m.split(",").map(Number)).filter(([c, r]) => c < cc && !(f === "1F" && c === 0 && r === rs));
+        shuffle(mods);
+        for (const [c, r] of mods) {
+          const x = c * MOD + ri(2, 6), y = r * MOD + ri(2, 6);
+          if (!plain(f, x, y)) continue;
+          Fl.items.push({ kind: "emblem", x: x + 0.5, y: y + 0.5, fake: i }); reserve(f, x, y); break;
+        }
+      }
+    }
+
+    // 城型の顔になる仕掛けが1つも無い城は作り直す（水鏡＝水門・絡繰＝回転壁と押し壁）
+    if ((T.id === "water" || T.id === "karakuri") && !used.some(f => F[f].edges.some(e => e.kind === "mech"))) return fail("L7 mech");
+    if (T.id === "karakuri" && !used.some(f => F[f].push.length)) return fail("L7 push");
+    // 7) 鏡に写して1枚の地図（階を横に並べたアトラス）にする
+    const n = used.length, W = n * (FW + GAP) + GAP, H = FH + 2 * GAP;
+    const rows = Array.from({ length: H }, () => Array(W).fill("#"));
+    const floors = used.map((f, i) => ({ id: f, label: FLOOR_LABEL[f], title: FLOOR_TITLE[f], ox: GAP + i * (FW + GAP), oy: GAP, w: FW, h: FH, index: i }));
+    const floorById = Object.fromEntries(floors.map(fl => [fl.id, fl]));
+    const mirCh = ch => ch === "B" ? "O" : ch;
+    for (const fl of floors) {
+      const Fl = F[fl.id];
+      for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+        const src = x <= AX ? Fl.cells[y][x] : mirCh(Fl.cells[y][FW - 1 - x]);
+        rows[fl.oy + y][fl.ox + x] = src;
+      }
+    }
+    const mx = (fl, lx) => FW - 1 - lx;                                 // マスの鏡
+    const mpx = (fl, x) => FW - x;                                       // 座標の鏡（連続値）
+    const portals = [], traps = [], items = [], fogs = [], locks = [], mechs = [], pushes = [];
+    const addBoth = (lx, fn) => { fn(false); if (lx < AX) fn(true); };
+    for (const fl of floors) {
+      const Fl = F[fl.id];
+      for (const p of Fl.portals) {
+        const to = floorById[p.toFloor];
+        addBoth(p.x, m => portals.push({ id: portals.length, x: fl.ox + (m ? mx(fl, p.x) : p.x) + 0.5, y: fl.oy + p.y + 0.5, cx: fl.ox + (m ? mx(fl, p.x) : p.x), cy: fl.oy + p.y, floor: fl.id, toFloor: p.toFloor, tx: to.ox + (m ? mpx(fl, p.tx) : p.tx), ty: to.oy + p.ty, kind: p.kind, dir: p.dir, oneWay: !!p.oneWay }));
+      }
+      for (const t of Fl.traps) addBoth(t.x, m => traps.push({ kind: t.kind, cx: fl.ox + (m ? mx(fl, t.x) : t.x), cy: fl.oy + t.y, dir: t.dir ? [m ? -t.dir[0] : t.dir[0], t.dir[1]] : null, floor: fl.id }));
+      for (const it of Fl.items) { const lx = Math.floor(it.x); addBoth(lx, m => items.push(Object.assign({}, it, { id: items.length, x: fl.ox + (m ? mpx(fl, it.x) : it.x), y: fl.oy + it.y, floor: fl.id }))); }
+      for (const fg of Fl.fogs) { fogs.push({ x: fl.ox + fg.x, y: fl.oy + fg.y, r: fg.r, floor: fl.id }); fogs.push({ x: fl.ox + mpx(fl, fg.x), y: fl.oy + fg.y, r: fg.r, floor: fl.id }); }
+      for (const l of Fl.locks) {
+        const onAxis = l.cells.some(([x]) => x === AX);
+        const mk = m => { const cellsL = []; for (const [x, y] of l.cells) { cellsL.push([fl.ox + (m ? mx(fl, x) : x), fl.oy + y]); if (onAxis && x < AX && !m) cellsL.push([fl.ox + mx(fl, x), fl.oy + y]); } const sw = l.sw ? [fl.ox + (m ? mx(fl, l.sw[0]) : l.sw[0]), fl.oy + l.sw[1]] : null; const sws = !l.sw ? [] : onAxis && l.sw[0] < AX ? [sw, [fl.ox + mx(fl, l.sw[0]), fl.oy + l.sw[1]]] : [sw]; return { id: locks.length, cells: cellsL, sw, sws, floor: fl.id }; };
+        locks.push(mk(false)); if (!onAxis) locks.push(mk(true));
+      }
+      for (const me of Fl.mechs) {
+        const onAxis = me.cells.some(([x]) => x === AX);
+        const cellsM = [];
+        for (const [x, y] of me.cells) { cellsM.push([fl.ox + x, fl.oy + y]); if (x < AX) cellsM.push([fl.ox + mx(fl, x), fl.oy + y]); }
+        mechs.push({ id: mechs.length, cells: cellsM, group: me.group, floor: fl.id, axis: onAxis });
+      }
+      for (const pw of Fl.push) {
+        addBoth(pw.cells[0][0], m => pushes.push({ id: pushes.length, cells: pw.cells.map(([x, y]) => [fl.ox + (m ? mx(fl, x) : x), fl.oy + y]), dx: m ? -pw.dx : pw.dx, dy: pw.dy, floor: fl.id }));
+      }
+    }
+    // 窓・スイッチなどは rows に入っている。鍵の扉は L、仕掛け扉は m（開）で初期化
+    // 部屋
+    const rooms = [];
+    const roomOf = new Int16Array(W * H).fill(-1);
+    for (const fl of floors) {
+      const Fl = F[fl.id];
+      const full = new Set();
+      for (const m of Fl.HS) { const [c, r] = m.split(",").map(Number); full.add(key(c, r)); full.add(key(MC - 1 - c, r)); }
+      const mergesFull = [];
+      for (const [a, b] of Fl.merges) { const [c1, r1] = a.split(",").map(Number), [c2, r2] = b.split(",").map(Number); mergesFull.push([key(c1, r1), key(c2, r2)], [key(MC - 1 - c1, r1), key(MC - 1 - c2, r2)]); }
+      const par = new Map(); for (const m of full) par.set(m, m);
+      const fnd = x => { while (par.get(x) !== x) x = par.get(x); return x; };
+      for (const [a, b] of mergesFull) par.set(fnd(a), fnd(b));
+      const groups = new Map();
+      for (const m of full) { const r = fnd(m); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(m); }
+      const names = MODULES[fl.id];
+      const nameOf = new Map();
+      const sortedGroups = [...groups.values()].map(g => g.sort()).sort((a, b) => a[0] < b[0] ? -1 : 1);
+      for (const g of sortedGroups) {
+        const mods = g.map(m => m.split(",").map(Number));
+        const minC = Math.min(...mods.map(m => m[0])), maxC = Math.max(...mods.map(m => m[0]));
+        const twinKey = mods.map(([c, r]) => key(MC - 1 - c, r)).sort().join("|");
+        const isFlag = fl.id === flagFloor && mods.some(([c, r]) => c === cc && r === rf);
+        const isFake = fakeFloors.some((ff, i) => ff === fl.id && mods.some(([c, r]) => c === cc && r === fakeRows[i]));
+        const isSpawn0 = fl.id === "1F" && mods.some(([c, r]) => c === 0 && r === rs), isSpawn1 = fl.id === "1F" && mods.some(([c, r]) => c === MC - 1 && r === rs);
+        let name;
+        if (isFlag || isFake) name = fl.id === "5F" ? "旗の間" : names[0];
+        else if (isSpawn0 || isSpawn1) name = "大手門";
+        else if (nameOf.has(twinKey)) name = nameOf.get(twinKey);
+        else name = T.id === "moon" ? names[ri(0, 2)] : pick(names.slice(1));
+        nameOf.set(g.slice().sort().join("|"), name);
+        const x0 = fl.ox + minC * MOD + 1, x1 = fl.ox + maxC * MOD + MOD - 1;
+        const ys = mods.map(m => m[1]); const y0 = fl.oy + Math.min(...ys) * MOD + 1, y1 = fl.oy + Math.max(...ys) * MOD + MOD - 1;
+        const cx = isFlag ? fl.ox + Fl.flag.x : mods.reduce((s, [c]) => s + fl.ox + c * MOD + 4.5, 0) / mods.length;
+        const cy = isFlag ? fl.oy + Fl.flag.y : mods.reduce((s, [, r]) => s + fl.oy + r * MOD + 4.5, 0) / mods.length;
+        const room = { id: rooms.length, floor: fl.id, name, mods: g, x0, y0, x1, y1, cx, cy, flag: isFlag, spawn: isSpawn0 ? 0 : isSpawn1 ? 1 : null, candidate: false, twinKey, key: g.slice().sort().join("|") };
+        rooms.push(room);
+        for (const [c, r] of mods) for (let y = r * MOD + 1; y <= r * MOD + MOD - 1; y++) for (let x = c * MOD + 1; x <= c * MOD + MOD - 1; x++) roomOf[(fl.oy + y) * W + fl.ox + x] = room.id;
+        for (const [a, b] of mergesFull) if (g.includes(a) && g.includes(b)) { const [c1, r1] = a.split(",").map(Number), [c2] = b.split(",").map(Number); const wx = Math.max(c1, c2) * MOD; for (let y = r1 * MOD + 1; y <= r1 * MOD + MOD - 1; y++) roomOf[(fl.oy + y) * W + fl.ox + wx] = room.id; }
+      }
+    }
+    rooms.forEach(r => { const t = rooms.find(q => q.floor === r.floor && q.key === r.twinKey); r.twin = t ? t.id : r.id; });
+    const flagRoom = rooms.find(r => r.flag);
+    const flagFl = floorById[flagFloor];
+    const flag = { x: flagFl.ox + F[flagFloor].flag.x, y: flagFl.oy + F[flagFloor].flag.y };
+    const candidates = [flagRoom.id];
+    fakeFloors.forEach((f, i) => { const fl = floorById[f]; const rr = rooms.find(r => r.floor === f && r.mods.includes(key(cc, fakeRows[i]))); if (rr) { rr.candidate = true; rr.fake = i; candidates.push(rr.id); } });
+    flagRoom.candidate = true;
+    // 旗印を偽の候補部屋に結びつける
+    for (const it of items) if (it.kind === "emblem") { const rr = rooms.find(r => r.fake === it.fake); it.eliminates = rr ? rr.id : null; }
+
+    const map = { W, H, rows, floors, portals, traps, items, fogs, locks, mechs, pushes, rooms, roomOf, flag, flagRoom: flagRoom.id, flagFloor, candidates };
+    // 開始地点（陣地の中に3つ）
+    const f1 = floorById["1F"];
+    map.spawn = [
+      [2.5, 4.5, 6.5].map(yy => ({ x: f1.ox + 2.5, y: f1.oy + rs * MOD + yy })),
+      [2.5, 4.5, 6.5].map(yy => ({ x: f1.ox + FW - 2.5, y: f1.oy + rs * MOD + yy })),
+    ];
+    // 8) 18m超の射線に遮蔽（柱）を置く
+    fixSightlines(map, AX, FW, cc, MOD);
+    // 勝利骨格＝独立経路をルート化（先行/索敵/陽動に割り当てる）
+    const graph = cellGraph(map);
+    map.graph = graph;
+    const routes0 = buildRoutes(map, graph, 0, k, rng);
+    if (!routes0) return fail("L10");
+    map.routes = [routes0, routes0.map(rt => mirrorRoute(map, rt))];
+    // ルートの待ち伏せ地点に擬態帯がなければ作る（鏡も）
+    for (const rt of map.routes[0]) ensureWait(map, rt);
+    map.routes[1] = map.routes[0].map(rt => mirrorRoute(map, rt));
+    const castle = {
+      v: 1, seed: seedStr, type: T.id, typeName: T.name, typeTheme: T.theme, trapName: T.trapName, trapDesc: T.trapDesc, features: T.features,
+      difficulty: diffKey, diffName: P.name, duration: P.duration, overtime: 60, flagInfo: P.flagInfo, paths: k,
+      floorsUsed: used, mc: MC, mr: MR, fw: FW, fh: FH, module: MOD, axisOffset: AX,
+    };
+    return Object.assign(map, { castle });
+  }
+
+  // ---------- 部屋グラフ（モジュール単位・鏡を含む）と最大流 ----------
+  function moduleGraph(used, F, trans, cc, MR, key) {
+    const MC = cc * 2 + 1;
+    const nodes = new Map(); let n = 0;
+    const fullSet = f => { const s = new Set(); for (const m of F[f].HS) { const [c, r] = m.split(",").map(Number); s.add(key(c, r)); s.add(key(MC - 1 - c, r)); } return s; };
+    const rep = {};
+    for (const f of used) {
+      const par = new Map(); const full = fullSet(f); for (const m of full) par.set(m, m);
+      const fnd = x => { while (par.get(x) !== x) x = par.get(x); return x; };
+      for (const [a, b] of F[f].merges) { const [c1, r1] = a.split(",").map(Number), [c2, r2] = b.split(",").map(Number); par.set(fnd(a), fnd(b)); par.set(fnd(key(MC - 1 - c1, r1)), fnd(key(MC - 1 - c2, r2))); }
+      rep[f] = m => f + ":" + fnd(m);
+      for (const m of full) { const id = rep[f](m); if (!nodes.has(id)) nodes.set(id, n++); }
+    }
+    const edges = [];
+    const idOf = (f, m) => nodes.get(rep[f](m));
+    for (const f of used) {
+      for (const e of F[f].edges) {
+        if (e.kind !== "door" && e.kind !== "crawl") continue;
+        const [c1, r1] = e.a.split(",").map(Number), [c2, r2] = e.b.split(",").map(Number);
+        edges.push([idOf(f, e.a), idOf(f, e.b)]);
+        const ma = key(MC - 1 - c1, r1), mb = key(MC - 1 - c2, r2);
+        if (!(c1 === cc && c2 === cc)) edges.push([idOf(f, ma), idOf(f, mb)]);
+      }
+    }
+    for (const tr of trans) for (const m of tr.mods) {
+      edges.push([idOf(tr.a, key(m.c, m.r)), idOf(tr.b, key(m.c, m.r))]);
+      if (!m.axis) edges.push([idOf(tr.a, key(MC - 1 - m.c, m.r)), idOf(tr.b, key(MC - 1 - m.c, m.r))]);
+    }
+    return { n, edges: edges.filter(([a, b]) => a !== b), nodeOf: (f, c, r) => idOf(f, key(c, r)) };
+  }
+  function maxFlow(n, edges, s, t, wantPaths) {
+    // 無向・容量1 の辺素パス数（Edmonds–Karp）
+    const adj = Array.from({ length: n }, () => []);
+    const cap = [], to = [];
+    const addArc = (u, v) => { to.push(v); cap.push(1); adj[u].push(to.length - 1); };
+    for (const [u, v] of edges) { addArc(u, v); addArc(v, u); }
+    const rev = i => i ^ 1;
+    // 無向辺を2本の弧（相互の逆弧）として扱う
+    let flow = 0;
+    for (;;) {
+      const prev = new Int32Array(n).fill(-1); prev[s] = -2; const q = [s];
+      for (let qi = 0; qi < q.length && prev[t] === -1; qi++) { const u = q[qi]; for (const a of adj[u]) if (cap[a] > 0 && prev[to[a]] === -1) { prev[to[a]] = a; q.push(to[a]); } }
+      if (prev[t] === -1) break;
+      for (let v = t; v !== s;) { const a = prev[v]; cap[a] -= 1; cap[rev(a)] += 1; v = to[rev(a)]; }
+      flow++;
+    }
+    if (!wantPaths) return flow;
+    // 流れた弧（元の容量1→0）から経路を取り出す
+    const used = new Set(); const paths = [];
+    for (let i = 0; i < flow; i++) {
+      const path = [s]; let u = s, guard = 0;
+      while (u !== t && guard++ < n * 4) {
+        const a = adj[u].find(x => cap[x] === 0 && cap[rev(x)] === 2 && !used.has(x));
+        if (a == null) break;
+        used.add(a); u = to[a]; path.push(u);
+      }
+      if (u === t) paths.push(path);
+    }
+    return { flow, paths };
+  }
+  function roomDegree(Fl, m, trans, f, key) {
+    const grp = new Set([m]);
+    for (let grew = true; grew;) { grew = false; for (const p of Fl.merges) if (p.some(x => grp.has(x)) && !p.every(x => grp.has(x))) { p.forEach(x => grp.add(x)); grew = true; } }
+    let d = Fl.edges.filter(e => e.kind !== "locked" && grp.has(e.a) !== grp.has(e.b)).length;
+    for (const tr of trans) if (tr.a === f || tr.b === f) for (const md of tr.mods) if (grp.has(key(md.c, md.r))) d++;
+    return d;
+  }
+  function countRooms(Fl, cc) { return [...Fl.HS].reduce((s, m) => s + (Number(m.split(",")[0]) === cc ? 1 : 2), 0); }
+
+  // ---------- マス単位のグラフ（移動可能・チーム別・上下接続つき） ----------
+  function cellGraph(map) {
+    const { W, H } = map;
+    const portalAt = new Map();
+    for (const p of map.portals) portalAt.set(p.cy * W + p.cx, p);
+    return { portalAt };
+  }
+  function walkable(map, x, y, team, opt) {
+    if (x < 0 || y < 0 || x >= map.W || y >= map.H) return false;
+    const ch = map.rows[y][x];
+    if (SOLID_MOVE[ch]) return false;
+    if (ch === "m" && opt && opt.mechClosed && opt.mechClosed.has(y * map.W + x)) return false;
+    if (team === 0 && ch === "O") return false;
+    if (team === 1 && ch === "B") return false;
+    if (opt && opt.noTrap && (TRAP_CH[ch])) return false;
+    return true;
+  }
+  // BFS（チーム・仕掛けの状態・罠を避けるか）。距離と前のマスを返す
+  function bfs(map, graph, sx, sy, team, opt) {
+    const { W, H } = map;
+    const dist = new Int32Array(W * H).fill(-1), prev = new Int32Array(W * H).fill(-1);
+    const s = sy * W + sx; dist[s] = 0; const q = [s];
+    const order = team === 1 ? [[-1, 0], [1, 0], [0, 1], [0, -1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let qi = 0; qi < q.length; qi++) {
+      const i = q[qi], x = i % W, y = (i / W) | 0;
+      const p = graph.portalAt.get(i);
+      if (p && !(opt && opt.biOnly && p.oneWay)) {
+        const j = Math.floor(p.ty) * W + Math.floor(p.tx);
+        if (dist[j] < 0 && walkable(map, j % W, (j / W) | 0, team, opt)) { dist[j] = dist[i] + 1; prev[j] = i; q.push(j); }
+        continue;   // 上下接続のマスに乗ったら必ず移動する
+      }
+      for (const [dx, dy] of order) {
+        const nx = x + dx, ny = y + dy;
+        if (!walkable(map, nx, ny, team, opt)) continue;
+        const j = ny * W + nx; if (dist[j] >= 0) continue;
+        dist[j] = dist[i] + 1; prev[j] = i; q.push(j);
+      }
+    }
+    return { dist, prev };
+  }
+  function turnsOf(map, prev, target) {
+    const { W } = map; let turns = 0, lastDir = null, i = target, guard = 0;
+    while (prev[i] >= 0 && guard++ < 100000) {
+      const j = prev[i]; const dx = (i % W) - (j % W), dy = ((i / W) | 0) - ((j / W) | 0);
+      const d = Math.abs(dx) + Math.abs(dy) === 1 ? (dx + "," + dy) : "portal";
+      if (d !== "portal" && lastDir && d !== lastDir) turns++;
+      if (d !== "portal") lastDir = d; else lastDir = null;
+      i = j;
+    }
+    return turns;
+  }
+  // 部屋グラフ（アトラス上・通常の扉と双方向の上下接続だけ）
+  function roomGraph(map, graph, opt) {
+    const { W, H, rows, roomOf } = map;
+    const edges = [], seen = new Set(), info = [];
+    const add = (a, b, kind, pt) => { if (a < 0 || b < 0 || a === b) return; const k2 = a < b ? a + "-" + b + ":" + kind + ":" + Math.round(pt.x) + "," + Math.round(pt.y) : b + "-" + a + ":" + kind + ":" + Math.round(pt.x) + "," + Math.round(pt.y); if (seen.has(k2)) return; seen.add(k2); edges.push([a, b]); info.push({ a, b, kind, x: pt.x, y: pt.y }); };
+    // 扉：部屋に属さない通行可能マスで、両側に別の部屋がある
+    const doorSeen = new Set();
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x; if (roomOf[i] >= 0) continue;
+      const ch = rows[y][x];
+      const pass = !SOLID_MOVE[ch] || (opt && opt.withMech && ch === "M");
+      if (!pass || ch === "#") continue;
+      if (opt && opt.noLocked && ch === "L") continue;
+      if (ch === "m" && opt && opt.noMech) continue;
+      if (ch === "M" && !(opt && opt.withMech)) continue;
+      const hl = roomOf[i - 1], hr = roomOf[i + 1], vu = roomOf[i - W], vd = roomOf[i + W];
+      if (hl >= 0 && hr >= 0 && hl !== hr) { const kk = "h" + x + ":" + hl + ":" + hr; if (!doorSeen.has(kk)) { doorSeen.add(kk); const cells = []; for (let yy = y; yy < H && roomOf[yy * W + x] < 0 && !SOLID_MOVE[rows[yy][x]]; yy++) cells.push(yy); add(hl, hr, ch === "u" ? "crawl" : ch === "m" ? "mech" : "door", { x: x + 0.5, y: y + cells.length / 2 }); for (const yy of cells) doorSeen.add("h" + x + ":" + hl + ":" + hr + ":" + yy); } }
+      if (vu >= 0 && vd >= 0 && vu !== vd) { const kk = "v" + y + ":" + vu + ":" + vd; if (!doorSeen.has(kk)) { doorSeen.add(kk); const cells = []; for (let xx = x; xx < W && roomOf[y * W + xx] < 0 && !SOLID_MOVE[rows[y][xx]]; xx++) cells.push(xx); add(vu, vd, ch === "u" ? "crawl" : ch === "m" ? "mech" : "door", { x: x + cells.length / 2, y: y + 0.5 }); } }
+    }
+    const stairSeen = new Set();
+    for (const p of map.portals) {
+      if (p.oneWay) continue;
+      const a = roomOf[p.cy * W + p.cx], b = roomOf[Math.floor(p.ty) * W + Math.floor(p.tx)];
+      const fl = map.floors.find(f => f.id === p.floor);
+      const sk = Math.min(a, b) + "-" + Math.max(a, b) + "@" + (p.cx - fl.ox) + "," + (p.cy - fl.oy);   // 同じ階段の上り口と降り口＝1本
+      if (stairSeen.has(sk)) continue; stairSeen.add(sk);
+      add(a, b, "portal:" + p.id, { x: p.x, y: p.y });
+    }
+    return { edges, info };
+  }
+  function buildRoutes(map, graph, team, k, rng) {
+    const RG = roomGraph(map, graph, { noLocked: true, noMech: true });
+    const s = map.rooms.find(r => r.spawn === team), t = map.rooms[map.flagRoom];
+    const res = maxFlow(map.rooms.length, RG.edges, s.id, t.id, true);
+    if (res.flow < k) return null;
+    const routes = [];
+    for (const path of res.paths.slice(0, 3)) {
+      const pts = [];
+      let pre = s.id;
+      for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1], b = path[i];
+        // この2部屋をつなぐ辺（扉 or 上下接続）を1つ選ぶ
+        const cand = RG.info.filter(e => (e.a === a && e.b === b) || (e.a === b && e.b === a));
+        const e = cand[0];
+        if (!e) return null;
+        if (e.kind.startsWith("portal:")) {
+          const p = map.portals[Number(e.kind.split(":")[1])];
+          // 向きを合わせる（a→b に進む方の上下接続を使う）
+          const pr = map.roomOf[p.cy * map.W + p.cx] === a ? p : map.portals.find(q => !q.oneWay && map.roomOf[q.cy * map.W + q.cx] === a && map.roomOf[Math.floor(q.ty) * map.W + Math.floor(q.tx)] === b) || p;
+          pts.push({ x: pr.x, y: pr.y, stair: true }, { x: pr.tx, y: pr.ty });
+        } else pts.push({ x: e.x, y: e.y, door: true });
+        if (b !== t.id) pre = b;
+      }
+      const door = pts[pts.length - 1];
+      const approach = pts.length >= 2 ? pts[pts.length - 2] : { x: map.rooms[pre].cx, y: map.rooms[pre].cy };
+      routes.push({ pts, pre, door, approach, wait: null });
+    }
+    while (routes.length < 3) routes.push(routes[routes.length % Math.max(1, routes.length)]);
+    return routes.map((r, i) => Object.assign({ id: "r" + i }, r));
+  }
+  function floorOfX(map, x) { return map.floors.find(fl => x >= fl.ox && x < fl.ox + fl.w) || null; }
+  function mirrorPt(map, pt) { const fl = floorOfX(map, pt.x); if (!fl) return Object.assign({}, pt); return Object.assign({}, pt, { x: 2 * fl.ox + fl.w - pt.x }); }
+  function mirrorRoute(map, rt) {
+    const m = pt => pt ? mirrorPt(map, pt) : null;
+    const preRoom = map.rooms[rt.pre];
+    return { id: rt.id, pts: rt.pts.map(m), pre: preRoom ? preRoom.twin : rt.pre, door: m(rt.door), approach: m(rt.approach), wait: m(rt.wait) };
+  }
+  // 待ち伏せ地点：旗の間の手前の部屋にある擬態帯（旗から4.2m以上）。無ければ2×2の擬態帯を作る（鏡も）
+  function ensureWait(map, rt) {
+    const room = map.rooms[rt.pre]; const { W, rows } = map;
+    const isZone = ch => ch === "b" || ch === "s" || ch === "w";
+    const far = (x, y) => Math.hypot(x + 0.5 - map.flag.x, y + 0.5 - map.flag.y) > 4.2 || floorOfX(map, x) !== floorOfX(map, map.flag.x);
+    let best = null, bd = 1e9;
+    const scan = () => { best = null; bd = 1e9; for (let y = room.y0; y <= room.y1; y++) for (let x = room.x0; x <= room.x1; x++) if (map.roomOf[y * W + x] === room.id && isZone(rows[y][x]) && far(x, y)) { const d = Math.hypot(x + 0.5 - rt.door.x, y + 0.5 - rt.door.y); if (d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5 }; } } };
+    scan();
+    if (!best) {
+      const fl = floorOfX(map, room.x0);
+      const ok = (x, y) => map.roomOf[y * W + x] === room.id && rows[y][x] === "." && far(x, y);
+      outer: for (let y = room.y0; y < room.y1; y++) for (let x = room.x0; x < room.x1; x++) {
+        if (!(ok(x, y) && ok(x + 1, y) && ok(x, y + 1) && ok(x + 1, y + 1))) continue;
+        for (const [xx, yy] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]]) { rows[yy][xx] = "w"; const mxx = 2 * fl.ox + fl.w - 1 - xx; if (rows[yy][mxx] === ".") rows[yy][mxx] = "w"; }
+        break outer;
+      }
+      scan();
+    }
+    rt.wait = best || { x: room.cx, y: room.cy };
+  }
+  // 射線：18m を超える直線視認があれば柱を置く（鏡の位置にも）
+  function fixSightlines(map, AX, FW, cc, MOD) {
+    const { W, H, rows } = map;
+    const DIRS = 16, STEP = 0.5;
+    const blocksLos = ch => ch === "#" || ch === "r" || ch === "t";
+    const free = (x, y) => {
+      if (!".bsw=q".includes(rows[y][x])) return false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const c = rows[y + dy][x + dx];
+        if ("^vzSHBO~Lmux".includes(c) || (c !== "." && c !== "#" && !"bsw=qyr".includes(c))) return false;
+        if (!SOLID_MOVE[c] && map.roomOf[(y + dy) * W + x + dx] < 0) return false;   // 扉のマスの隣
+      }
+      if (map.roomOf[y * W + x] < 0) return false;
+      if (Math.hypot(x + 0.5 - map.flag.x, y + 0.5 - map.flag.y) < 3.6) return false;
+      if (map.rooms.some(r => r.candidate && Math.hypot(x + 0.5 - r.cx, y + 0.5 - r.cy) < 3.6)) return false;   // 偽の候補も本物と同じく中心を空ける（柱で見分けられない）
+      if (map.portals.some(p => Math.abs(Math.floor(p.tx) - x) <= 1 && Math.abs(Math.floor(p.ty) - y) <= 1)) return false;   // 着地点（降下口は隣に口が無い）
+      if (map.items.some(it => Math.floor(it.x) === x && Math.floor(it.y) === y)) return false;
+      return true;
+    };
+    const longest = () => {
+      const out = [];
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        if (SOLID_MOVE[rows[y][x]] || rows[y][x] === "#") continue;
+        for (let d = 0; d < DIRS / 2; d++) {   // 反対向きは相手側から数えるので半分でよい
+          const a = d * Math.PI * 2 / DIRS, cx = Math.cos(a), cy = Math.sin(a);
+          // 両方向に伸ばした線分の長さ
+          let l1 = 0; for (let s = STEP; ; s += STEP) { const px = x + 0.5 + cx * s, py = y + 0.5 + cy * s; if (blocksLos(rows[py | 0][px | 0])) break; l1 = s; }
+          let l2 = 0; for (let s = STEP; ; s += STEP) { const px = x + 0.5 - cx * s, py = y + 0.5 - cy * s; if (blocksLos(rows[py | 0][px | 0])) break; l2 = s; }
+          if (l1 + l2 > SIGHT_MAX) out.push({ x, y, cx, cy, l1, l2 });
+        }
+      }
+      return out;
+    };
+    let pillars = 0;
+    // 柱を置いても階の中の行き来が切れないか（切れるなら戻す）
+    const floorReach = (fl) => {
+      let start = -1, total = 0;
+      for (let y = fl.oy; y < fl.oy + fl.h; y++) for (let x = fl.ox; x < fl.ox + fl.w; x++) { const ch = rows[y][x]; if (!SOLID_MOVE[ch] && ch !== "m") { total++; if (start < 0) start = y * W + x; } }
+      if (start < 0) return true;
+      const seen = new Uint8Array(W * H); seen[start] = 1; const q = [start]; let n = 0;
+      for (let qi = 0; qi < q.length; qi++) { const i = q[qi]; n++; const x = i % W, y = (i / W) | 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const j = (y + dy) * W + x + dx, ch = rows[y + dy][x + dx]; if (!seen[j] && !SOLID_MOVE[ch] && ch !== "m") { seen[j] = 1; q.push(j); } } }
+      return n === total;
+    };
+    const banned = new Set();
+    const segD = (px, py, s) => { const ax = s.x + 0.5 - s.cx * s.l2, ay = s.y + 0.5 - s.cy * s.l2, bx = s.x + 0.5 + s.cx * s.l1, by = s.y + 0.5 + s.cy * s.l1; const vx = bx - ax, vy = by - ay, L = vx * vx + vy * vy; const t = L > 0 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / L)) : 0; return Math.hypot(px - ax - vx * t, py - ay - vy * t); };
+    for (let pass = 0; pass < 24; pass++) {
+      const v = longest();
+      if (!v.length) break;
+      const done = new Set(), placed = [];
+      for (const s of v) {
+        if (placed.some(([px, py]) => segD(px + 0.5, py + 0.5, s) < 1.2)) continue;   // この線はもう遮った
+        // 線分の中点付近で柱にできるマスを探す
+        const mid = (s.l1 - s.l2) / 2, half = (s.l1 + s.l2) / 2;
+        let put = null;
+        for (let off = 0; off <= half && !put; off += 0.5) for (const sg of [1, -1]) {
+          const t = mid + sg * off, px = Math.floor(s.x + 0.5 + s.cx * t), py = Math.floor(s.y + 0.5 + s.cy * t);
+          if (py <= 0 || px <= 0 || py >= H - 1 || px >= W - 1) continue;
+          if (!banned.has(px + "," + py) && free(px, py)) { put = [px, py]; break; }
+        }
+        if (!put) continue;
+        const key2 = put[0] + "," + put[1]; if (done.has(key2)) continue; done.add(key2);
+        const fl = floorOfX(map, put[0]); const mxx = 2 * fl.ox + fl.w - 1 - put[0];
+        const old1 = rows[put[1]][put[0]], old2 = rows[put[1]][mxx];
+        rows[put[1]][put[0]] = "r"; if (".bsw=q".includes(old2)) rows[put[1]][mxx] = "r";
+        if (!floorReach(fl)) { rows[put[1]][put[0]] = old1; rows[put[1]][mxx] = old2; banned.add(key2); continue; }
+        placed.push(put, [mxx, put[1]]);
+        pillars++;
+      }
+      if (!done.size) break;
+    }
+    map.pillarsAdded = pillars;
+  }
+
+  // ---------- 採用条件の自動検証 ----------
+  function verify(map) {
+    const graph = map.graph || cellGraph(map);
+    const { W, H, rows } = map, C = map.castle;
+    const k = C.paths;
+    const checks = [];
+    const add = (id, label, ok, detail) => checks.push({ id, label, ok: !!ok, detail });
+    const cellOf = pt => [Math.floor(pt.x), Math.floor(pt.y)];
+    const [fx, fy] = cellOf(map.flag);
+    const mechCells = g => new Set(map.mechs.filter(m => m.group === g).flatMap(m => m.cells.map(([x, y]) => y * W + x)));
+    // 到達可能性：鍵なし（L は閉）・仕掛け扉は位相A/Bの両方
+    let reachOK = true; const lens = [[], []]; const turns = [[], []];
+    for (const phase of [0, 1]) {
+      const closed = mechCells(phase === 0 ? 1 : 0);
+      for (const team of [0, 1]) {
+        const [sx, sy] = cellOf(map.spawn[team][1]);
+        const r = bfs(map, graph, sx, sy, team, { mechClosed: closed, biOnly: true });
+        const d = r.dist[fy * W + fx];
+        if (d < 0) reachOK = false;
+        lens[team].push(d); turns[team].push(turnsOf(map, r.prev, fy * W + fx));
+      }
+    }
+    add("reach", "到達可能性", reachOK, `両陣営→旗 最短 ${lens[0].join("/")}・${lens[1].join("/")} マス（仕掛け扉の位相A/B）`);
+    const diffPct = Math.max(...lens[0].map((d, i) => Math.abs(d - lens[1][i]) / Math.max(1, Math.min(d, lens[1][i])))) * 100;
+    const turnDiff = Math.max(...turns[0].map((t, i) => Math.abs(t - turns[1][i])));
+    add("fair", "公平性", diffPct <= 5 && turnDiff <= 1, `最短移動の差 ${diffPct.toFixed(1)}%・曲がり角の差 ${turnDiff}`);
+    // 独立経路
+    const RG = roomGraph(map, graph, { noLocked: true, noMech: true });
+    const fl0 = maxFlow(map.rooms.length, RG.edges, map.rooms.find(r => r.spawn === 0).id, map.flagRoom);
+    const fl1 = maxFlow(map.rooms.length, RG.edges, map.rooms.find(r => r.spawn === 1).id, map.flagRoom);
+    add("paths", "独立経路", fl0 >= k && fl1 >= k, `辺素な経路 青${fl0}・橙${fl1}（必要 ${k}）`);
+    // 上下移動：各使用階に入口・出口が2つ以上
+    const vert = map.floors.map(fl => {
+      const out = map.portals.filter(p => p.floor === fl.id && !p.oneWay).length;
+      const inn = map.portals.filter(p => p.toFloor === fl.id && !p.oneWay).length;
+      return { id: fl.id, out, inn };
+    });
+    add("vertical", "上下移動", vert.every(v => v.out >= 2 && v.inn >= 2), vert.map(v => `${v.id}:入${v.inn}/出${v.out}`).join(" "));
+    // 袋小路
+    const RGall = roomGraph(map, graph, {});
+    const deg = new Array(map.rooms.length).fill(0);
+    for (const [a, b] of RGall.edges) { deg[a]++; deg[b]++; }
+    const dead = map.rooms.filter(r => deg[r.id] <= 1 && r.spawn == null);
+    const hasFeature = r => {
+      for (let y = r.y0 - 1; y <= r.y1 + 1; y++) for (let x = r.x0 - 1; x <= r.x1 + 1; x++) { const ch = rows[y] && rows[y][x]; if (ch === "S" || ch === "H" || ch === "x") return true; }
+      return map.items.some(it => it.x >= r.x0 && it.x <= r.x1 + 1 && it.y >= r.y0 && it.y <= r.y1 + 1);
+    };
+    const deadBad = dead.filter(r => !hasFeature(r));
+    const deadLimit = Math.ceil(map.rooms.length * 0.35);
+    add("deadend", "袋小路", deadBad.length === 0 && dead.length <= deadLimit, `袋小路 ${dead.length}室（上限 ${deadLimit}）・目的なし ${deadBad.length}室`);
+    // 射線
+    const losClear = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy), n = Math.ceil(len / 0.2); for (let i = 1; i < n; i++) { const t = i / n; const ch = rows[(a.y + dy * t) | 0][(a.x + dx * t) | 0]; if (SOLID_LOS[ch]) return false; } return true; };
+    let spawnLos = false;
+    for (const a of map.spawn[0]) { for (const b of map.spawn[1]) if (losClear(a, b)) spawnLos = true; if (losClear(a, map.flag)) spawnLos = true; }
+    for (const b of map.spawn[1]) if (losClear(b, map.flag)) spawnLos = true;
+    let longCount = 0;
+    {
+      const DIRS = 16, STEP = 0.5, blocks = ch => ch === "#" || ch === "r" || ch === "t";
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        if (SOLID_MOVE[rows[y][x]]) continue;
+        for (let d = 0; d < DIRS / 2; d++) {
+          const a = d * Math.PI * 2 / DIRS, cx = Math.cos(a), cy = Math.sin(a);
+          let l = 0; for (let s = STEP; ; s += STEP) { if (blocks(rows[(y + 0.5 + cy * s) | 0][(x + 0.5 + cx * s) | 0])) break; l = s; }
+          let l2 = 0; for (let s = STEP; ; s += STEP) { if (blocks(rows[(y + 0.5 - cy * s) | 0][(x + 0.5 - cx * s) | 0])) break; l2 = s; }
+          if (l + l2 > SIGHT_MAX) longCount++;
+        }
+      }
+    }
+    add("sight", "射線", !spawnLos && longCount === 0, `開始地点どうし・開始地点と旗の直線視認 ${spawnLos ? "あり" : "なし"}／18m超の射線 ${longCount}本（柱 ${map.pillarsAdded || 0}本を追加）`);
+    // 罠：避けて全部屋・旗へ行ける／環境ダメージは HP1 未満にしない（ルール側）
+    let trapOK = true;
+    for (const team of [0, 1]) {
+      const [sx, sy] = cellOf(map.spawn[team][1]);
+      const a = bfs(map, graph, sx, sy, team, { mechClosed: mechCells(1), biOnly: true });
+      const b = bfs(map, graph, sx, sy, team, { mechClosed: mechCells(1), biOnly: true, noTrap: true });
+      if (b.dist[fy * W + fx] < 0) trapOK = false;
+      const anyIn = (res, r, skipTrap) => { for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) { const i = y * W + x; if (map.roomOf[i] !== r.id) continue; if (skipTrap && TRAP_CH[rows[y][x]]) continue; if (res.dist[i] >= 0) return true; } return false; };
+      for (const r of map.rooms) { if (r.spawn === 1 - team) continue; if (anyIn(a, r, false) && !anyIn(b, r, true)) trapOK = false; }
+    }
+    add("trap", "罠", trapOK && map.traps.every(t => t.kind), `罠 ${map.traps.length}マス＋押し壁 ${map.pushes.length}か所・すべて予告つきで迂回できる`);
+    // 復帰：陣地があり、敵は入れない
+    const baseCells = [0, 0];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (rows[y][x] === "B") baseCells[0]++; if (rows[y][x] === "O") baseCells[1]++; }
+    let invade = false;
+    for (const team of [0, 1]) {
+      const [sx, sy] = cellOf(map.spawn[1 - team][1]);
+      const r = bfs(map, graph, sx, sy, 1 - team, { mechClosed: new Set(), biOnly: false });
+      for (let i = 0; i < W * H; i++) if (r.dist[i] >= 0 && rows[(i / W) | 0][i % W] === (team === 0 ? "B" : "O")) invade = true;
+    }
+    add("recover", "復帰", baseCells[0] > 0 && baseCells[1] > 0 && !invade, `陣地 ${baseCells[0]}/${baseCells[1]}マス・敵の侵入 ${invade ? "あり" : "なし"}（露見から12秒で自動帰還）`);
+    add("mech", "絡繰変更", reachOK, `仕掛け扉 ${map.mechs.length}組・どの位相でも旗へ行ける（敷居に人がいる間は切替を延期＝ルール側）`);
+    // 旗室
+    const fr = map.rooms[map.flagRoom];
+    let camoNear = 0, trapNear = 0;
+    for (let y = fr.y0 - 4; y <= fr.y1 + 4; y++) for (let x = fr.x0 - 4; x <= fr.x1 + 4; x++) {
+      const ch = rows[y] && rows[y][x]; if (!ch) continue;
+      if ("bsw".includes(ch) && Math.hypot(x + 0.5 - map.flag.x, y + 0.5 - map.flag.y) < 3) camoNear++;
+      if ((TRAP_CH[ch] || ch === "z") && (map.roomOf[y * W + x] === fr.id)) trapNear++;
+    }
+    const entr = RG.info.filter(e => e.a === fr.id || e.b === fr.id).length;
+    add("flagroom", "旗室", camoNear === 0 && trapNear === 0 && entr >= 2, `擬態帯(3m内) ${camoNear}・罠/落下 ${trapNear}・侵入口 ${entr}`);
+    return { ok: checks.every(c => c.ok), checks };
+  }
+
+  // ---------- 公開の入口 ----------
+  // opts: { seed, difficulty, type }（type を省略すると seed から決める）
+  function generate(opts) {
+    const diff = DIFF[opts && opts.difficulty] ? opts.difficulty : "normal";
+    const base = String((opts && opts.seed) || "castle");
+    const type = (opts && opts.type) || TYPES[Math.floor(makeRng("type:" + base)() * TYPES.length)].id;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const s = attempt ? base + "#" + attempt : base;
+      let m = null;
+      try { m = build(s, diff, type); } catch (e) { lastErr = e; m = null; }
+      if (!m) continue;
+      const v = verify(m);
+      if (!v.ok) continue;
+      m.castle.attempt = attempt; m.castle.baseSeed = base; m.verify = v;
+      return m;
+    }
+    throw new Error("castle generation failed: " + (lastErr ? lastErr.message : "no valid seed"));
+  }
+  return { _build: build, _lastFail: () => lastFail, generate, verify, drawType, makeRng, TYPES, DIFF, FLOORS, FLOOR_LABEL, FLOOR_TITLE, MODULES, SOLID_MOVE, SOLID_LOS, TRAP_CH, MOD };
+})();
+
+
 // ===== sim.js（自動コピー・編集しない） =====
 // 忍彩かくれんぼ — 競技シミュレーション（決定論・30Hz固定tick・DOM非依存）
 // 将来サーバーへ移す前提：入力は「方向と希望する行動」だけ。座標や命中はここが決める（設計書09）。
 const Sim = (() => {
   const D = (typeof DATA !== "undefined") ? DATA : null;
+  const CastleLib = (typeof Castle !== "undefined") ? Castle : (typeof require === "function" ? null : null);
   const R = D.RULES;
-  const W = D.MAP.w, H = D.MAP.h;
   const TICK = 1 / 30;
-  const FLAG = D.MAP.flag;
-  const SOLID = { "#": 1, "t": 1, "r": 1 };
-  const grid = D.MAP_ROWS.map(r => r.split(""));
+  // 移動を止めるマス（窓 x・鍵の扉 L・閉じた仕掛け扉 M を含む）／視線を止めるマス（窓は見通せる）
+  const SOLID = { "#": 1, "t": 1, "r": 1, "x": 1, "L": 1, "M": 1 };
+  const LOSBLOCK = { "#": 1, "t": 1, "r": 1, "L": 1, "M": 1 };
+  // 練習用の固定マップ（竹影の城・1階だけ）
+  const LEGACY = {
+    kind: "legacy", W: D.MAP.w, H: D.MAP.h, rows: D.MAP_ROWS.map(r => r.split("")), flag: D.MAP.flag,
+    spawn: [0, 1].map(t => D.MAP.spawn.map(sp => ({ x: t ? D.MAP.w - sp.x : sp.x, y: sp.y }))),
+    floorOf: null, portalAt: null, fieldCache: new Map(), version: 0, items: [], locks: [], mechs: [], pushes: [], fogObjs: [],
+  };
+  let curMap = LEGACY, W = LEGACY.W, H = LEGACY.H, FLAG = LEGACY.flag, grid = LEGACY.rows, floorOf = null, portalAt = null;
+  // 城（castle.js）→ 試合で使う地図
+  function castleMap(spec) {
+    const c = CastleLib.generate(spec);
+    const m = Object.assign({ kind: "castle", fieldCache: new Map(), version: 0 }, c);
+    m.floorOf = new Uint8Array(c.W * c.H).fill(255);
+    c.floors.forEach((fl, i) => { for (let y = fl.oy; y < fl.oy + fl.h; y++) for (let x = fl.ox; x < fl.ox + fl.w; x++) m.floorOf[y * c.W + x] = i; });
+    m.portalAt = new Map(c.portals.map(pt => [pt.cy * c.W + pt.cx, pt]));
+    // 階段の対（上り口⇔降り口）：着いた直後に相方の口を踏んでも戻らない
+    for (const pt of c.portals) {
+      if (pt.oneWay) continue;
+      const a = c.floors.find(f => f.id === pt.floor), b = c.floors.find(f => f.id === pt.toFloor);
+      const partner = c.portals.find(q => q.floor === pt.toFloor && q.toFloor === pt.floor && q.cx - b.ox === pt.cx - a.ox && q.cy - b.oy === pt.cy - a.oy);
+      pt.partner = partner ? partner.cy * c.W + partner.cx : -1;
+    }
+    m.trapAt = new Map(c.traps.map(t => [t.cy * c.W + t.cx, t]));
+    m.fogObjs = c.fogs.map((f, i) => ({ id: -1 - i, kind: "zone_fog", team: -1, x: f.x, y: f.y, r: f.r, life: 1e9, static: true }));
+    m.locks.forEach(l => { l.open = false; });
+    m.mechs.forEach(me => { me.open = true; });
+    m.items.forEach(it => { it.taken = false; });
+    const pwGroup = new Map();
+    m.pushes.forEach(pw => {
+      const fl = c.floors.find(f => f.id === pw.floor), x0 = pw.cells[0][0] - fl.ox, y0 = pw.cells[0][1];
+      const key = pw.floor + ":" + Math.min(x0, fl.w - 1 - x0) + ":" + y0;      // 鏡写しの相方は同じ鍵
+      if (!pwGroup.has(key)) pwGroup.set(key, pwGroup.size);
+      pw.next = 5 + pwGroup.get(key) * 1.7; pw.warned = false;
+    });
+    m.period = c.castle.type === "water" ? 14 : 10;
+    return m;
+  }
+  function bindMap(g) {
+    const m = (g && g.map) || LEGACY;
+    if (m === curMap) return;
+    curMap = m; W = m.W; H = m.H; FLAG = m.flag; grid = m.rows; floorOf = m.floorOf || null; portalAt = m.portalAt || null;
+  }
+  // 地図が変わった（鍵の扉が開いた・仕掛け扉が動いた）ら経路の計算をやり直す
+  function mapChanged(m) { m.version++; m.fieldCache.clear(); }
+  function floorAt(x, y) { if (!floorOf) return 0; const cx = x | 0, cy = y | 0; if (cx < 0 || cy < 0 || cx >= W || cy >= H) return 255; return floorOf[cy * W + cx]; }
 
   // ---------- 地形 ----------
   function cellAt(x, y) {
@@ -2670,10 +3742,10 @@ const Sim = (() => {
     const n = Math.ceil(len / 0.2);
     for (let i = 1; i < n; i++) {
       const t = i / n;
-      if (SOLID[cellAt(ax + dx * t, ay + dy * t)]) return false;
+      if (LOSBLOCK[cellAt(ax + dx * t, ay + dy * t)]) return false;
     }
     if (DYN.length && dynBlocksLos(ax, ay, bx, by)) return false;
-    return !SOLID[cellAt(bx, by)];
+    return !LOSBLOCK[cellAt(bx, by)];
   }
   function pathClear(ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
@@ -2689,19 +3761,25 @@ const Sim = (() => {
     for (const o of DYN) if (o.kind === "paint_zone" && Math.abs(x - o.x) <= o.half && Math.abs(y - o.y) <= o.half) return o.pattern;
     return null;
   }
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  // 別の階どうしは「とても遠い」（範囲技・音・視界が階をまたがない）
+  const dist = (a, b) => { if (floorOf) { const fa = floorAt(a.x, a.y), fb = floorAt(b.x, b.y); if (fa !== fb && fa !== 255 && fb !== 255) return Infinity; } return Math.hypot(a.x - b.x, a.y - b.y); };
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   const mirrorX = x => W - x;
+  const viewRangeOf = p => R.viewRange + (curMap.kind === "castle" && cellAt(p.x, p.y) === "y" ? 6 : 0);   // 火見櫓：遠くまで見える
 
-  // BFS距離場（チームごとに敵陣地を壁扱い）。Botの経路用
-  const fieldCache = new Map();
+  // BFS距離場（チームごとに敵陣地を壁扱い・階段/降下幕をたどる）。Botの経路用。地図ごと・地図が変わるたびに作り直す
   function field(team, tx, ty) {
     const cx = Math.max(0, Math.min(W - 1, tx | 0)), cy = Math.max(0, Math.min(H - 1, ty | 0));
     const key = team + ":" + cx + "," + cy;
-    let f = fieldCache.get(key);
+    const cache = curMap.fieldCache;
+    let f = cache.get(key);
     if (f) return f;
+    if (cache.size > 360) cache.clear();
     f = new Int16Array(W * H).fill(-1);
     const q = [cx + cy * W]; f[cx + cy * W] = 0;
+    // 逆向き：着地点 → そこへ飛ばす口
+    let from = curMap.portalFrom;
+    if (portalAt && !from) { from = curMap.portalFrom = new Map(); for (const [i, pt] of portalAt) { const j = (pt.ty | 0) * W + (pt.tx | 0); if (!from.has(j)) from.set(j, []); from.get(j).push(i); } }
     for (let qi = 0; qi < q.length; qi++) {
       const i = q[qi], x = i % W, y = (i / W) | 0, d = f[i];
       const nb = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
@@ -2709,10 +3787,12 @@ const Sim = (() => {
         if (solidCell(nx, ny, team)) continue;
         const j = nx + ny * W;
         if (f[j] >= 0) continue;
+        if (portalAt && portalAt.has(j)) continue;   // 口のマスに乗ったら必ず飛ぶ＝隣へ歩いて出られない
         f[j] = d + 1; q.push(j);
       }
+      if (from && from.has(i)) for (const j of from.get(i)) { if (f[j] < 0 && !solidCell(j % W, (j / W) | 0, team)) { f[j] = d + 1; q.push(j); } }
     }
-    fieldCache.set(key, f);
+    cache.set(key, f);
     return f;
   }
   // 距離場を下る方向（斜めは両隣が空いているときだけ）
@@ -2743,8 +3823,8 @@ const Sim = (() => {
   // ---------- 生成 ----------
   function makePlayer(id, team, charIdx, opts = {}) {
     const slot = opts.slot | 0;
-    const sp = D.MAP.spawn[slot % 3];
-    const x = team ? mirrorX(sp.x) : sp.x;
+    const sp = { x: curMap.spawn[team][slot % 3].x, y: curMap.spawn[team][slot % 3].y };
+    const x = sp.x;
     return {
       id, team, char: Math.max(0, Math.min(D.CHARS.length - 1, charIdx | 0)), name: opts.name || D.CHARS[Math.max(0, Math.min(D.CHARS.length - 1, charIdx | 0))].name,
       bot: !!opts.bot, role: opts.role || "scout", slot,
@@ -2757,6 +3837,8 @@ const Sim = (() => {
       hp: R.hp.byLevel[0], hpMax: R.hp.byLevel[0], exposed: 0, healT: 0, healBy: null, exposedAt: -99, silentT: 0, stunT: 0, aimJitter: 0,
       // 成長：レベルごとに選んだ系統 {2:"影",...}、選択待ち、奥義
       perks: {}, pendingLevel: 0, pickT: 0, ult: { used: false, active: 0 }, firstHitCd: 0, firstHitArmed: false, crossedCenter: false, lastSide: 0, protectBonus: 0, soulBoosted: false,
+      // 城：上下接続の待ち・罠の待ち・回復地点
+      lastCell: -1, portalCd: 0, noPortal: -1, trapCd: 0, shrineT: 0, shrineCd: 0,
       // 固有技
       skillCd: 0, sk: {}, mods: [],       // mods: [{k:"speed", mul:1.15, t:4}, ...]
       bal: balanceFor(charIdx),
@@ -2785,17 +3867,33 @@ const Sim = (() => {
       slowFactor: R.slowFactor + k(st.esc) * 0.06, exposeMove: R.hp.exposeMove + k(st.esc) * 0.04,
     };
   }
+  // 城の仕様（seed・難しさ・城型）。省略時は練習用の固定マップ
+  function mapFor(opts) { return opts && opts.castle && CastleLib ? castleMap(Object.assign({ difficulty: opts.difficulty || "normal" }, opts.castle)) : LEGACY; }
+  function intelFor(m) {
+    if (m.kind !== "castle") return [{ known: true, candidates: [] }, { known: true, candidates: [] }];
+    const mk = () => {
+      const info = m.castle.flagInfo;
+      if (info === "full") return { known: true, floorKnown: true, candidates: [m.flagRoom] };
+      if (info === "floor") return { known: false, floorKnown: true, candidates: m.rooms.filter(r => r.floor === m.flagFloor && r.spawn == null).map(r => r.id) };
+      return { known: false, floorKnown: false, candidates: m.candidates.slice() };
+    };
+    return [mk(), mk()];
+  }
   function createMatch(opts) {
+    const map = mapFor(opts);
+    bindMap({ map });
+    const dur = map.kind === "castle" ? map.castle.duration : R.duration;
     const g = {
+      map, intel: intelFor(map), keys: [0, 0], mapT: 0, duration: dur,
       xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [], serial2: 0,
       phase: "briefing", timer: opts.briefing === false ? 0 : R.briefing,
-      time: R.duration, elapsed: 0, tick: 0, overtime: false,
+      time: dur, elapsed: 0, tick: 0, overtime: false,
       seed: (opts.seed | 0) || 20260922,
       difficulty: D.DIFFICULTY[opts.difficulty] || D.DIFFICULTY.normal,
       practice: !!opts.practice, noTimer: !!opts.noTimer,
       players: [], shots: [], effects: [], log: [], serial: 0,
       winner: [], claimants: [], reason: "", claimTick: -1,
-      flag: "available", rules: R.version, map: D.MAP.version,
+      flag: "available", rules: R.version, mapVersion: map.kind === "castle" ? "castle:" + map.castle.seed : D.MAP.version,
     };
     (opts.players || []).forEach((p, i) => g.players.push(makePlayer(p.id || ("p" + i), p.team, p.char, p)));
     for (const p of g.players) assignAi(g, p);
@@ -2806,15 +3904,30 @@ const Sim = (() => {
     const dif = g.difficulty;
     // HP制（3発で露見）になって守りが弱まったぶん、最短取得を設計書の目安（初回45〜90秒）へ寄せる。手ごわいは従来どおり速い
     p.ai.minClaim = dif.aggro ? 18 + rng(g) * 15 : dif.name === "やさしい" ? 60 + rng(g) * 40 : 45 + rng(g) * 35;
+    // 城：試合が長い（4〜6分）ぶん、待ち・突入の目安も伸ばす（練習用の固定マップは240秒のまま）
+    p.ai.tscale = curMap.kind === "castle" ? (g.duration || R.duration) / R.duration : 1;
+    p.ai.minClaim *= p.ai.tscale;
     p.ai.routeOverride = null;
     if (dif.aggro && p.bot && rng(g) < 0.5) {
-      const routes = Object.keys(D.MAP.routes);
+      const routes = curMap.kind === "castle" ? curMap.routes[p.team].map((r, i) => i) : Object.keys(D.MAP.routes);
       p.ai.routeOverride = routes[(rng(g) * routes.length) | 0];
     }
+    // 城で旗の場所をまだ知らない：まず候補の部屋を探す
+    if (curMap.kind === "castle" && g.intel && !g.intel[p.team].known) p.ai.phase = "search";
   }
-  function resetForRematch(g, swapTeams) {
+  // 再戦：城なら新しい城（opts.castle、無ければ同じ seed に再戦回数を足して作り直す）
+  function resetForRematch(g, swapTeams, opts) {
+    if (g.map && g.map.kind === "castle") {
+      const prev = g.map.castle;
+      const spec = (opts && opts.castle) || { seed: prev.baseSeed + ":r" + ((g.rematch | 0) + 1), difficulty: prev.difficulty, type: prev.type };
+      g.map = mapFor({ castle: spec, difficulty: spec.difficulty || prev.difficulty });
+    }
+    g.rematch = (g.rematch | 0) + 1;
+    bindMap(g);
+    g.intel = intelFor(g.map); g.keys = [0, 0]; g.mapT = 0;
+    g.duration = g.map.kind === "castle" ? g.map.castle.duration : R.duration;
     const players = g.players.map(p => makePlayer(p.id, swapTeams ? 1 - p.team : p.team, p.char, { slot: p.slot, name: p.name, bot: p.bot, role: p.role, connected: p.connected }));
-    Object.assign(g, { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false,
+    Object.assign(g, { phase: "briefing", timer: R.briefing, time: g.duration, elapsed: 0, tick: 0, overtime: false,
       shots: [], effects: [], log: [], winner: [], claimants: [], reason: "", claimTick: -1, flag: "available",
       xp: [0, 0], level: [1, 1], xpLog: [], holdT: [0, 0], revealXp: {}, hp0Xp: {}, lastExpose: {}, objects: [], dyn: [], camoMarks: [] });
     DYN = g.dyn;
@@ -2857,8 +3970,8 @@ const Sim = (() => {
     }
   }
   function spawnPos(p) {
-    const sp = D.MAP.spawn[p.slot % 3];
-    return { x: p.team ? mirrorX(sp.x) : sp.x, y: sp.y };
+    const sp = curMap.spawn[p.team][p.slot % 3];
+    return { x: sp.x, y: sp.y };
   }
   function returnHome(g, p) {
     unhide(g, p, true);
@@ -2881,9 +3994,9 @@ const Sim = (() => {
   }
   function canSee(p, q) {
     if (q.returning > 0) return false;
-    const d = dist(p, q);
-    if (d > R.viewRange) return false;
-    if (q.exposed > 0 && d <= R.viewRange && lineClear(p.x, p.y, q.x, q.y)) return true;
+    const d = dist(p, q), vr = viewRangeOf(p);
+    if (d > vr) return false;
+    if (q.exposed > 0 && d <= vr && lineClear(p.x, p.y, q.x, q.y)) return true;
     if (!lineClear(p.x, p.y, q.x, q.y)) return false;
     if (p.team !== q.team && d > 1.2 && (inZone("zone_dark", q.x, q.y) || inZone("zone_dark", p.x, p.y))) return false;
     if (q.camo === 2 && q.reveal <= 0 && d >= R.closeSee) return false;
@@ -2906,6 +4019,7 @@ const Sim = (() => {
     // 紫煙から出た直後は足跡が残る（視程内の敵には方向が伝わる）
     if (listener.team !== src.team && modHas(src, "fogTrail") && dist(listener, src) <= R.viewRange) return true;
     let r = src.camo === 2 ? (modHas(src, "foxdash") ? R.footCrouch : R.footCamo) : src.crouch ? R.footCrouch : R.footRun;   // 狐駆け：布の揺れが大きい
+    if (curMap.kind === "castle") { const c = cellAt(src.x, src.y); if (c === "q" || c === "u") r = Math.min(r, R.footCrouch); }   // 縁側・床下通路は足音が小さい
     r *= hearMul;
     if (!lineClear(listener.x, listener.y, src.x, src.y)) r *= 0.5;
     return dist(listener, src) <= r;
@@ -2913,6 +4027,12 @@ const Sim = (() => {
 
   // ---------- Bot ----------
   function routeFor(p) {
+    if (curMap.kind === "castle") {
+      const rs = curMap.routes[p.team];
+      const idx = p.ai && p.ai.routeOverride != null ? p.ai.routeOverride : p.role === "vanguard" ? 0 : p.role === "scout" ? 1 : 2;
+      const rt = rs[idx % rs.length];
+      return { pts: rt.pts, wait: rt.wait, approach: rt.approach, door: rt.door };
+    }
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[1];
     const rt = D.MAP.routes[(p.ai && p.ai.routeOverride) || role.route];
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
@@ -2938,6 +4058,14 @@ const Sim = (() => {
   function guardPosts(team, dif) {
     // 旗から「警戒半径＋0.6m」の自陣側に3か所（敵の持ち場とは印が届かない距離）
     const r = alertRadius(dif) + 0.6;
+    if (curMap.kind === "castle") {
+      // 城：旗の間の中で、自陣側（青は左・橙は右）の歩けるところ。壁なら半径を縮める
+      return [-0.42, 0, 0.42].map(a => {
+        const ang = (team ? 0 : Math.PI) + a;
+        for (let rr = r; rr >= 2.2; rr -= 0.25) { const x = FLAG.x + Math.cos(ang) * rr, y = FLAG.y + Math.sin(ang) * rr; if (!blocked(x, y, R.bodyRadius + 0.05, team) && lineClear(x, y, FLAG.x, FLAG.y)) return { x, y }; }
+        return { x: FLAG.x + Math.cos(ang) * 2.2, y: FLAG.y };
+      });
+    }
     return [-0.42, 0, 0.42].map(a => {
       const ang = Math.PI + a;
       const x = FLAG.x + Math.cos(ang) * r, y = FLAG.y + Math.sin(ang) * r;
@@ -2951,6 +4079,7 @@ const Sim = (() => {
     south:  { peek: [30.5, 31.0], attack: [29.0, 27.4] },
   };
   function harassPts(p) {
+    if (curMap.kind === "castle") { const rt = routeFor(p); return { peek: rt.approach || rt.door, attack: rt.door }; }
     const role = D.ROLES.find(r => r.id === p.role) || D.ROLES[2];
     const h = HARASS[(p.ai && p.ai.routeOverride) || role.route] || HARASS.south;
     const m = pt => p.team ? { x: mirrorX(pt[0]), y: pt[1] } : { x: pt[0], y: pt[1] };
@@ -3003,7 +4132,7 @@ const Sim = (() => {
     const enemies = g.players.filter(q => q.team !== p.team && q.exposed <= 0);   // 露見中の敵は印が当たらず旗も掴めない
     const mates = g.players.filter(q => q.team === p.team && q !== p);
     const flagD = dist(p, FLAG);
-    const late = g.overtime || g.elapsed > 120;
+    const late = g.overtime || g.elapsed > (g.duration || R.duration) * 0.5;
     const easy = dif.aimErr > 0.2;
 
     // ---- 知覚（人間と同じ可視ルール＋視野220°）----
@@ -3017,6 +4146,7 @@ const Sim = (() => {
       else if (audible(p, q) && rng(g) < 0.6 && !(ai.suspect && ai.suspect.sure))
         ai.suspect = { x: q.x + (rng(g) - 0.5) * 2, y: q.y + (rng(g) - 0.5) * 2, t: 1.5, sure: false };
     }
+    for (const o of g.objects) if (o.kind === "phantom" && phantomAudible(p, o) && rng(g) < 0.5 && !(ai.suspect && ai.suspect.sure)) ai.suspect = { x: o.x, y: o.y, t: 1.5, sure: false };
     const enemy = seen[0] || null;
     if (enemy) { ai.seen += interval; ai.lastContact = g.elapsed; } else ai.seen = 0;
     const reacted = enemy && ai.seen >= dif.reaction;
@@ -3025,9 +4155,11 @@ const Sim = (() => {
     const alertR = alertRadius(dif);
     // 競り合い：旗へ「向かって来ている」敵だけを侵入者とみなす（陽動役が旗の近くをうろつくだけでは反応しない。HP制で守りが弱まったぶん早取りを抑える）
     const intruder = enemies.filter(q => q.returning <= 0 && dist(q, FLAG) < alertR && (botSees(p, q) || q.reveal > 0) && (approaching(q) && (dist(q, FLAG) < flagD + 1.5 || dist(q, FLAG) < alertR * 0.6))).sort((a, b) => dist(a, FLAG) - dist(b, FLAG))[0] || null;
-    const contest = !!intruder && flagD <= dist(intruder, FLAG) + 2.5;
+    const contest = !!intruder && flagD <= dist(intruder, FLAG) + 2.5 && (curMap.kind !== "castle" || g.elapsed > ai.minClaim * 0.5);
     const quiet2 = ai.lastContact + 2 < g.elapsed && !ai.suspect && !enemies.some(q => q.returning <= 0 && dist(q, FLAG) < 12 && audible(p, q));
     const opportunity = quiet2 && g.elapsed > ai.minClaim;
+    // 旗のそばに「攻めに出た」味方がいれば続く（城：探索中にたまたま旗の間へ入った味方には釣られない）
+    const mateAtFlag = mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5 && (curMap.kind !== "castle" || m.ai.phase === "go"));
 
     // ---- 露見中：近くに味方がいれば待つ、いなければ自陣へ ----
     if (p.exposed > 0) {
@@ -3047,6 +4179,12 @@ const Sim = (() => {
     if (wounded && !enemies.some(q => q.returning <= 0 && botSees(p, q))) {
       if (dist(p, wounded) <= 1.2) { setInput(p, { x: 0, y: 0, actions: [] }); return; }
       const mv = steer(g, p, wounded); setInput(p, { x: mv.x, y: mv.y, actions: [] }); return;
+    }
+    // ---- 城：旗が分かったら探索をやめてルートへ ----
+    if (curMap.kind === "castle" && g.intel) {
+      const I = g.intel[p.team];
+      if (ai.phase === "search" && I.known) { ai.phase = "route"; ai.wp = resumeWp(g, p); ai.searchRoom = null; }
+      else if (ai.phase !== "search" && !I.known) ai.phase = "search";
     }
     // ---- 固有技・奥義（状況で使う）----
     const skillActs = botSkill(g, p, enemies, mates, seen, flagD);
@@ -3085,8 +4223,10 @@ const Sim = (() => {
     // ---- 目標地点 ----
     const route = routeFor(p);
     let goal = FLAG, hold = false, angleHold = null;
+    if (ai.phase === "search") goal = searchTarget(g, p);
     if (ai.phase === "route") {
-      while (ai.wp < route.pts.length && dist(p, route.pts[ai.wp]) < 1.3) ai.wp++;
+      // 階段の口の地点は、踏んで別の階へ移ったら（次の地点の方が近い）通過したことにする
+      while (ai.wp < route.pts.length && (dist(p, route.pts[ai.wp]) < 1.3 || (route.pts[ai.wp].stair && ai.wp + 1 < route.pts.length && dist(p, route.pts[ai.wp + 1]) < dist(p, route.pts[ai.wp])))) ai.wp++;
       if (ai.wp >= route.pts.length) {
         if (late) ai.phase = "go";
         else if (p.role === "vanguard" && g.elapsed < 60) ai.phase = "towait";
@@ -3100,10 +4240,12 @@ const Sim = (() => {
       goal = route.wait;
       if (dist(p, goal) < 0.45) {
         if (zoneAt(p.x, p.y) && p.camoCd <= 0 && p.reveal <= 0 && p.protect <= 0) {
-          ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20); ai.waitT = 0;
+          ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20) * (ai.tscale || 1); ai.waitT = 0;
           setInput(p, { x: 0, y: 0, actions: ["camo"] }); return;
         }
-        ai.phase = "go";
+        // 城：擬態できない待ち場所でも、攻め時まではその場で待つ
+        if (curMap.kind === "castle" && !late && g.elapsed < ai.minClaim) { ai.phase = "wait"; ai.goAt = g.elapsed + (dif.aggro ? 8 + rng(g) * 10 : 25 + rng(g) * 20) * (ai.tscale || 1); ai.waitT = 0; }
+        else ai.phase = "go";
       }
     }
     if (ai.phase === "wait") {
@@ -3131,7 +4273,7 @@ const Sim = (() => {
         if (p.scanCd <= 0 && p.protect <= 0 && (ai.suspect || rng(g) < 0.015) && rng(g) < dif.scanUse) { actions.push("scan"); ai.suspect = null; angleHold = ai.suspect ? Math.atan2(ai.suspect.y - p.y, ai.suspect.x - p.x) : angleHold; }
         if (g.elapsed - ai.postT > 20 && rng(g) < 0.04) { ai.post = guardPosts(p.team, dif)[(rng(g) * 3) | 0]; ai.postT = g.elapsed; }
       }
-      if (late || contest || opportunity || mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5)) ai.phase = "go";
+      if (late || contest || opportunity || mateAtFlag) ai.phase = "go";
     }
     if (ai.phase === "harass") {
       const hp = harassPts(p);
@@ -3146,10 +4288,10 @@ const Sim = (() => {
         if (g.elapsed - ai.hzT > (dif.aggro ? 1.5 + rng(g) * 1.5 : 3 + rng(g) * 3) && p.marks === 0) {
           ai.hz = "attack"; ai.hzT = g.elapsed;
           // 手ごわい：覗く場所を変えて読まれにくくする（複雑さ）
-          if (dif.aggro && rng(g) < 0.5) { const routes = Object.keys(D.MAP.routes); ai.routeOverride = routes[(rng(g) * routes.length) | 0]; }
+          if (dif.aggro && rng(g) < 0.5) { const routes = curMap.kind === "castle" ? curMap.routes[p.team].map((r, i) => i) : Object.keys(D.MAP.routes); ai.routeOverride = routes[(rng(g) * routes.length) | 0]; }
         }
       }
-      if (late || contest || (ai.quietT > 6 && quiet2 && g.elapsed > ai.minClaim * 0.7) || opportunity || mates.some(m => m.returning <= 0 && dist(m, FLAG) < 2.5)) ai.phase = "go";
+      if (late || contest || (ai.quietT > 6 && quiet2 && g.elapsed > ai.minClaim * 0.7) || opportunity || mateAtFlag) ai.phase = "go";
     }
     if (ai.phase === "go") {
       goal = FLAG;
@@ -3211,8 +4353,10 @@ const Sim = (() => {
   // ---------- 1tick ----------
   const DYN_KINDS = { wall: 1, zone_fog: 1, zone_dark: 1, zone_water: 1, paint_zone: 1, zone_null: 1, zone_petals: 1 };
   function bindDyn(g) { DYN = (g && g.dyn) || []; }
+  function rebuildDyn(g) { bindMap(g); g.dyn = (g.objects || []).filter(o => !o.dead && DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending)).concat(curMap.fogObjs || []); DYN = g.dyn; }
   function step(g) {
     const dt = TICK;
+    bindMap(g);
     bindDyn(g);
     if (g.phase === "finished") return;
     g.tick++;
@@ -3227,8 +4371,9 @@ const Sim = (() => {
     if (!g.noTimer) g.time -= dt;
     const claims = [];
     stepObjects(g, dt);
-    g.dyn = g.objects.filter(o => DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending));   // 予告中の金剛壁はまだ実体がない
+    g.dyn = g.objects.filter(o => DYN_KINDS[o.kind] && !(o.kind === "wall" && o.pending)).concat(curMap.fogObjs || []);   // 予告中の金剛壁はまだ実体がない・城の霧庭は常設
     DYN = g.dyn;
+    if (curMap.kind === "castle") { stepMap(g, dt); if (g.tick % 5 === 0) updateIntel(g); }
     // 旗の周囲4mの確保（生存人数で上回っている側に +8/3秒・チームで1回分）
     for (const t of [0, 1]) {
       const alive = tm => g.players.filter(q => q.team === tm && q.returning <= 0 && q.exposed <= 0).length;
@@ -3338,6 +4483,7 @@ const Sim = (() => {
       const difMul = p.bot && !p.controller && g.difficulty.speedMul ? g.difficulty.speedMul : 1;
       let speed = base * (p.slow > 0 ? p.bal.slowFactor : 1) * difMul * modMul(p, "speed");
       if (p.exposed > 0) speed = R.speed * p.bal.speedMul * p.bal.exposeMove * difMul;   // 露見：本人の速さの70%（逃走で±）
+      if (curMap.kind === "castle") { const cu = cellAt(p.x, p.y); if (cu === "=") speed *= 0.8; else if (cu === "u") speed = Math.min(speed, R.crouchSpeed * p.bal.speedMul); }   // 浅瀬は遅い・床下通路はしゃがみ歩き
       if (p.sk.channel && p.sk.channel.speedMul != null) speed *= p.sk.channel.speedMul;
       if (DYN.some(o => o.kind === "zone_null" && o.owner === p.id && Math.hypot(p.x - o.x, p.y - o.y) <= o.r)) speed *= 0.7;   // 罪業：本人も遅くなる
       const nx = p.x + i.x * speed * dt, ny = p.y + i.y * speed * dt;
@@ -3346,12 +4492,14 @@ const Sim = (() => {
       p.speedNow = Math.hypot(p.x - p.px, p.y - p.py) / dt;
       if (p.camo === 2 && !zoneAt(p.x, p.y)) unhide(g, p);
       {
-        const side = p.x < FLAG.x ? 0 : 1, enemySide = 1 - p.team;
+        const side = p.x < axisOf(p) ? 0 : 1, enemySide = 1 - p.team;
         if (p.camo === 2 && !p.crossedCenter && p.lastSide === p.team && side === enemySide) { p.crossedCenter = true; addXp(g, p.team, R.hp.xp.cross, "cross"); }
         p.lastSide = side;
       }
       // 設置物との接触（狐火・棘道・矢印・影穴の入口）
       touchObjects(g, p);
+      // 城：上下接続・罠・鍵・回復地点
+      if (curMap.kind === "castle") mapInteract(g, p, dt);
 
       // 旗まわりの波紋
       const fd = dist(p, FLAG);
@@ -3487,8 +4635,169 @@ const Sim = (() => {
     }
   }
 
+  // ---------- 城：上下接続・罠・鍵・仕掛け扉・情報 ----------
+  function axisOf(p) {
+    if (curMap.kind !== "castle") return FLAG.x;
+    const fi = floorAt(p.x, p.y), fl = curMap.floors[fi === 255 ? 0 : fi];
+    return fl.ox + fl.w / 2;
+  }
+  function teleport(g, p, pt) {
+    unhide(g, p, true);
+    emit(g, "portal", p.x, p.y, { team: -1, life: 0.6, kind: pt.kind, dir: pt.dir });
+    p.x = pt.tx; p.y = pt.ty; p.px = p.x; p.py = p.y;
+    p.portalCd = 0.4; p.noPortal = pt.partner != null ? pt.partner : -1; p.noPortalT = 1.0; p.lastCell = (p.y | 0) * W + (p.x | 0);
+    emit(g, "portal", p.x, p.y, { team: -1, life: 0.6, kind: pt.kind, dir: pt.dir });
+  }
+  // 押し出す（急流・押し壁）。壁と敵の陣地の手前で止まる
+  function pushPlayer(g, p, dx, dy) {
+    const L = Math.hypot(dx, dy); if (L < 1e-6) return;
+    let bx = p.x, by = p.y;
+    for (let s2 = 0.25; s2 <= L + 1e-6; s2 += 0.25) { const nx = p.x + dx / L * s2, ny = p.y + dy / L * s2; if (blocked(nx, ny, R.bodyRadius, p.team) || !pathClear(p.x, p.y, nx, ny)) break; bx = nx; by = ny; }
+    if (bx !== p.x || by !== p.y) { unhide(g, p); emit(g, "shove", p.x, p.y, { team: -1, tx: bx, ty: by, life: 0.5 }); p.x = bx; p.y = by; p.px = bx; p.py = by; }
+  }
+  function openLock(g, lk, p) {
+    lk.open = true;
+    for (const [x, y] of lk.cells) grid[y][x] = ".";
+    mapChanged(curMap);
+    emit(g, "unlock", lk.cells[0][0] + 0.5, lk.cells[0][1] + 0.5, { team: p ? p.team : -1, life: 1 });
+    logEvent(g, "unlock", { id: p ? p.id : null, team: p ? p.team : -1, lock: lk.id });
+  }
+  function addPhantom(g, x, y) {
+    g.objects.push({ id: ++g.serial2, kind: "phantom", team: -1, x, y, angle: rng(g) * Math.PI * 2, life: 4, speed: 3 });
+  }
+  function phantomAudible(listener, o) {
+    if (o.kind !== "phantom") return false;
+    let r = R.footRun; if (!lineClear(listener.x, listener.y, o.x, o.y)) r *= 0.5;
+    return dist(listener, o) <= r;
+  }
+  function mapInteract(g, p, dt) {
+    const m = curMap;
+    p.portalCd = Math.max(0, p.portalCd - dt); p.trapCd = Math.max(0, p.trapCd - dt); p.shrineCd = Math.max(0, p.shrineCd - dt);
+    const ci = (p.y | 0) * W + (p.x | 0), entered = ci !== p.lastCell;
+    p.lastCell = ci;
+    if (p.noPortal >= 0) { p.noPortalT = (p.noPortalT || 0) - dt; const nx = p.noPortal % W + 0.5, ny = ((p.noPortal / W) | 0) + 0.5; if (Math.hypot(p.x - nx, p.y - ny) > 1.6 || p.noPortalT <= 0) p.noPortal = -1; }
+    const pt = portalAt.get(ci);
+    if (pt && p.portalCd <= 0 && ci !== p.noPortal) { teleport(g, p, pt); return; }
+    const ch = grid[p.y | 0][p.x | 0];
+    if (entered) {
+      if (ch === "n") { addMod(p, "fogTrail", 3, { src: "naruko" }); emit(g, "naruko", p.x, p.y, { team: -1, life: 1 }); emit(g, "footprint", p.x, p.y, { team: 1 - p.team, life: 3 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "naruko" }); }   // 鳴子：3秒だけ足跡が見える
+      else if (ch === "c" && p.trapCd <= 0) { const tr = m.trapAt.get(ci); if (tr && tr.dir) { pushPlayer(g, p, tr.dir[0] * 2, tr.dir[1] * 2); p.trapCd = 0.8; logEvent(g, "trap", { id: p.id, team: p.team, kind: "current" }); } }   // 急流：2m押し流す（HPは減らない）
+      else if (ch === "f" && p.trapCd <= 0 && p.exposed <= 0) {   // 火鉢：8ダメージ・HP1未満にはならない・XPなし
+        const before = p.hp; p.hp = Math.max(1, p.hp - 8); p.trapCd = 1.2;
+        if (before > p.hp) { emit(g, "burn", p.x, p.y, { team: -1, target: p.id, dmg: before - p.hp, life: 0.8 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "brazier", dmg: before - p.hp }); }
+      }
+      else if (ch === "l") { const tr = m.trapAt.get(ci); if (tr && !(tr.cd > g.elapsed)) { tr.cd = g.elapsed + 6; addPhantom(g, p.x, p.y); emit(g, "lantern", p.x, p.y, { team: -1, life: 0.8 }); logEvent(g, "trap", { id: p.id, team: p.team, kind: "lantern" }); } }   // 幻灯：偽の足音を4秒
+      else if (ch === "S") { const lk = m.locks.find(l => !l.open && (l.sws || (l.sw ? [l.sw] : [])).some(s => s[0] === (p.x | 0) && s[1] === (p.y | 0))); if (lk) openLock(g, lk, p); }   // 近道スイッチ
+    }
+    // 回復地点：静かに2秒立つと +25（露見中は不可・20秒に一度）
+    if (ch === "H" && p.exposed <= 0 && p.speedNow < 0.3 && p.shrineCd <= 0) { p.shrineT += dt; if (p.shrineT >= 2) { const before = p.hp; p.hp = Math.min(p.hpMax, p.hp + 25); p.shrineCd = 20; p.shrineT = 0; emit(g, "shrine", p.x, p.y, { team: p.team, target: p.id, heal: p.hp - before, life: 1 }); } }
+    else p.shrineT = 0;
+    // 鍵：拾うとチームの鍵が1つ増える／鍵の扉に触れると開く
+    for (const it of m.items) if (!it.taken && it.kind === "key" && Math.hypot(p.x - it.x, p.y - it.y) < 0.8 && p.exposed <= 0) { it.taken = true; g.keys[p.team]++; emit(g, "key", it.x, it.y, { team: p.team, life: 1 }); logEvent(g, "key", { id: p.id, team: p.team }); }
+    if (g.keys[p.team] > 0 && p.exposed <= 0) for (const lk of m.locks) { if (lk.open) continue; if (lk.cells.some(([x, y]) => Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y) < 1.3)) { g.keys[p.team]--; openLock(g, lk, p); break; } }
+  }
+  // 時間で動く仕掛け：回転壁/水門（2組が交互に開閉・敷居に人がいる間は延期）・押し壁（予告1秒のち押す）
+  function stepMap(g, dt) {
+    const m = curMap;
+    g.mapT += dt;
+    if (m.mechs.length) {
+      const phase = Math.floor(g.mapT / m.period) % 2;
+      let changed = false;
+      for (const me of m.mechs) {
+        const want = me.group === 0 ? phase === 0 : phase === 1;
+        if (want === me.open) continue;
+        if (!want && g.players.some(q => q.returning <= 0 && me.cells.some(([x, y]) => Math.hypot(x + 0.5 - q.x, y + 0.5 - q.y) < R.bodyRadius + 0.75))) continue;   // 敷居に人がいる＝閉めない
+        me.open = want; changed = true;
+        for (const [x, y] of me.cells) grid[y][x] = want ? "m" : "M";
+        emit(g, "mech", me.cells[0][0] + 0.5, me.cells[0][1] + 0.5, { team: -1, open: want, life: 0.8 });
+      }
+      if (changed) mapChanged(m);
+    }
+    for (const pw of m.pushes) {
+      if (!pw.warned && g.mapT >= pw.next - 1) { pw.warned = true; emit(g, "push_warn", pw.cells[0][0] + 0.5, pw.cells[0][1] + 1, { team: -1, dx: pw.dx, life: 1 }); }
+      if (g.mapT >= pw.next) {
+        pw.next += 7; pw.warned = false;
+        for (const q of g.players) { if (q.returning > 0) continue; const c = (q.y | 0) * W + (q.x | 0); if (pw.cells.some(([x, y]) => y * W + x === c)) { pushPlayer(g, q, pw.dx, pw.dy); logEvent(g, "trap", { id: q.id, team: q.team, kind: "pushwall" }); } }
+      }
+    }
+  }
+  // 旗の情報：見えた（射線・視程内）ら判明。候補の部屋は中が見えたら消える。旗印を見つけると偽の候補が1つ消える
+  function updateIntel(g) {
+    const m = curMap;
+    for (const t of [0, 1]) {
+      const I = g.intel[t]; if (I.known) continue;
+      for (const p of g.players) {
+        if (p.team !== t || p.returning > 0) continue;
+        const vr = viewRangeOf(p);
+        if (dist(p, FLAG) <= vr && lineClear(p.x, p.y, FLAG.x, FLAG.y)) { I.known = true; I.floorKnown = true; I.candidates = [m.flagRoom]; logEvent(g, "flagfound", { team: t, id: p.id }); emit(g, "flagfound", FLAG.x, FLAG.y, { team: t, life: 2 }); break; }
+        I.candidates = I.candidates.filter(rid => {
+          if (rid === m.flagRoom) return true;
+          const r = m.rooms[rid];
+          for (const [ox, oy] of [[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]]) { const c = { x: r.cx + ox, y: r.cy + oy }; if (SOLID[cellAt(c.x, c.y)]) continue; if (dist(p, c) <= vr && lineClear(p.x, p.y, c.x, c.y)) return false; }
+          return true;
+        });
+        for (const it of m.items) if (it.kind === "emblem" && it.eliminates != null && I.candidates.includes(it.eliminates) && dist(p, it) <= vr && lineClear(p.x, p.y, it.x, it.y)) { I.candidates = I.candidates.filter(x => x !== it.eliminates); (I.emblems = I.emblems || []).push(it.id); logEvent(g, "emblem", { team: t, id: p.id }); }
+      }
+      if (!I.known && I.candidates.length <= 1) { I.known = true; I.floorKnown = true; I.candidates = [m.flagRoom]; logEvent(g, "flagfound", { team: t }); }
+    }
+  }
+  // Bot：旗が分かるまで候補の部屋を手分けして見に行く
+  // 探す部屋の「のぞく地点」：部屋の中心。ただし旗の上は踏まず、旗から3m手前で止まる（見つけた瞬間に掴んで終わらせない）
+  function lookPoint(r, p) {
+    if (Math.hypot(r.cx - FLAG.x, r.cy - FLAG.y) > 2.5) return { x: r.cx, y: r.cy };
+    const a = Math.atan2(p.y - FLAG.y, p.x - FLAG.x);
+    for (const d of [3.2, 2.6, 2.0]) for (const da of [0, 0.5, -0.5, 1, -1, 1.6, -1.6]) {
+      const x = FLAG.x + Math.cos(a + da) * d, y = FLAG.y + Math.sin(a + da) * d;
+      if (!SOLID[cellAt(x, y)] && floorAt(x, y) === floorAt(FLAG.x, FLAG.y)) return { x, y };
+    }
+    return { x: r.cx, y: r.cy };
+  }
+  function mirrorTie(team, r) {
+    const fl = m => m.floors.find(f => f.id === r.floor);
+    const f = fl(curMap); if (!f) return 0;
+    const rx = team === 0 ? r.cx - f.ox : f.ox + f.w - r.cx;
+    return rx + (r.cy - f.oy) / 100;
+  }
+  function searchTarget(g, p) {
+    const I = g.intel[p.team], m = curMap;
+    if (p.ai.searchRoom != null && I.candidates.includes(p.ai.searchRoom)) return lookPoint(m.rooms[p.ai.searchRoom], p);
+    const taken = new Set(g.players.filter(q => q.team === p.team && q !== p && q.ai && q.ai.phase === "search").map(q => q.ai.searchRoom));
+    let best = null, bd = 1e9;
+    const ci = (p.y | 0) * W + (p.x | 0);
+    for (const rid of I.candidates) {
+      const r = m.rooms[rid]; const f = field(p.team, r.cx, r.cy); const d = f[ci];
+      if (d < 0) continue;
+      // 同点は「自陣から見て手前・上」を選ぶ（青と橙で選び方を鏡にそろえる）
+      const cost = d + (taken.has(rid) ? 60 : 0) + mirrorTie(p.team, r) * 1e-4;
+      if (cost < bd) { bd = cost; best = rid; }
+    }
+    p.ai.searchRoom = best;
+    if (best == null) return FLAG;
+    return lookPoint(m.rooms[best], p);
+  }
+  // 旗が分かったら、ルートのうち旗へ近い側の地点から再開する
+  function resumeWp(g, p) {
+    const rt = routeFor(p), f = field(p.team, FLAG.x, FLAG.y), dp = f[(p.y | 0) * W + (p.x | 0)];
+    for (let i = 0; i < rt.pts.length; i++) { const q = rt.pts[i]; const d = f[(q.y | 0) * W + (q.x | 0)]; if (d >= 0 && dp >= 0 && d <= dp) return i; }
+    return rt.pts.length;
+  }
+  // 地図の状態（オンライン：鍵の扉・仕掛け扉・拾われた鍵）
+  function mapState(g) {
+    const m = g.map; if (!m || m.kind !== "castle") return null;
+    return { v: m.version, locks: m.locks.filter(l => l.open).map(l => l.id), mechs: m.mechs.map(me => me.open ? 1 : 0), taken: m.items.filter(it => it.taken).map(it => it.id) };
+  }
+  function applyMapState(g, ms) {
+    const m = g.map; if (!m || m.kind !== "castle" || !ms) return;
+    let changed = false;
+    for (const id of ms.locks || []) { const lk = m.locks[id]; if (lk && !lk.open) { lk.open = true; for (const [x, y] of lk.cells) m.rows[y][x] = "."; changed = true; } }
+    (ms.mechs || []).forEach((o, i) => { const me = m.mechs[i]; if (me && me.open !== !!o) { me.open = !!o; for (const [x, y] of me.cells) m.rows[y][x] = o ? "m" : "M"; changed = true; } });
+    for (const id of ms.taken || []) { const it = m.items[id]; if (it) it.taken = true; }
+    if (changed) mapChanged(m);
+  }
+
   // ---------- HP・露見・復帰 ----------
   function inSpawn(p) {
+    if (curMap.kind === "castle") return cellAt(p.x, p.y) === (p.team ? "O" : "B");
     const b = D.MAP.spawnBox;
     const x = p.team ? mirrorX(p.x) : p.x;
     return x >= b.x0 && x <= b.x1 + 1 && p.y >= b.y0 && p.y <= b.y1 + 1;
@@ -3579,7 +4888,7 @@ const Sim = (() => {
       g.level[team]++;
       const L = g.level[team];
       logEvent(g, "levelup", { team, level: L });
-      emit(g, "levelup", FLAG.x, FLAG.y, { team, level: L, life: 2 });
+      for (const q of g.players) if (q.team === team && q.returning <= 0) emit(g, "levelup", q.x, q.y, { team, level: L, life: 2 });
       for (const p of g.players) if (p.team === team) { if (p.pendingLevel) choosePerk(g, p, null); p.pendingLevel = L; p.pickT = R.hp.pickSec; const old = p.hpMax; p.hpMax = R.hp.byLevel[L - 1]; if (p.exposed <= 0) p.hp = Math.min(p.hpMax, p.hp + (p.hpMax - old)); }
     }
   }
@@ -3823,6 +5132,7 @@ const Sim = (() => {
         }
       }
       if (o.kind === "gate" && o.exit && o.life <= EPS) o.dead = true;
+      if (o.kind === "phantom") { o.angle += (rng(g) - 0.5) * 0.6; const nx = o.x + Math.cos(o.angle) * o.speed * dt, ny = o.y + Math.sin(o.angle) * o.speed * dt; if (!blocked(nx, ny, 0.25, -1)) { o.x = nx; o.y = ny; } else o.angle += Math.PI / 2; }
     }
     if (g.objects.some(o => o.dead)) g.objects = g.objects.filter(o => !o.dead);
     if (g.camoMarks.length && g.elapsed - g.camoMarks[0].t > 30) g.camoMarks = g.camoMarks.filter(m => g.elapsed - m.t <= 30);
@@ -3842,7 +5152,7 @@ const Sim = (() => {
       if (o.kind === "thorns" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= (p.crouch ? 0.2 : 0.4) && !(o.last === p.id && g.elapsed - o.lastT < 3)) { o.last = p.id; o.lastT = g.elapsed; addMod(p, "fogTrail", o.revealSec, { src: "thornsTrail" }); emit(g, "footprint", p.x, p.y, { team: o.team, life: o.revealSec }); }
       if (o.kind === "trail" && o.team !== p.team && segDist(p.x, p.y, o.ax, o.ay, o.bx, o.by) <= 0.5 && !(o.last === p.id && g.elapsed - o.lastT < 1.5)) { o.last = p.id; o.lastT = g.elapsed; setReveal(p, o.revealSec); unhide(g, p); }
       if (o.kind === "arrow" && o.team === p.team && dist(p, o) <= o.r) p.silentT = Math.max(p.silentT, o.silentSec);
-      if (o.kind === "zone_fog" && o.team !== p.team) {
+      if (o.kind === "zone_fog" && o.team !== p.team && !o.static) {
         o.inside = o.inside || {};
         const inside = dist(p, o) <= o.r;
         if (o.inside[p.id] && !inside) addMod(p, "fogTrail", o.trailSec);   // 外へ出た後も足跡が2秒残る
@@ -3885,6 +5195,7 @@ const Sim = (() => {
     return o;
   }
   function snapshot(g, viewerId) {
+    bindMap(g);
     bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     const players = [], sounds = [];
@@ -3893,7 +5204,7 @@ const Sim = (() => {
       const view = enemyView(v, p);
       if (view === "none") {
         const tk = trackDirFor(v, p);
-        if (p.pulse && p.returning <= 0) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen, trackDir: tk });
+        if (p.pulse && p.returning <= 0 && pulseShownTo(g, v)) players.push({ id: p.id, team: p.team, x: +p.x.toFixed(1), y: +p.y.toFixed(1), pulse: true, pulseOnly: true, lastSeen: p.lastSeen, trackDir: tk });
         else if (p.lastSeen || tk != null) players.push({ id: p.id, team: p.team, char: p.char, ghost: true, lastSeen: p.lastSeen, trackDir: tk });
         if (audible(v, p)) sounds.push({ a: +Math.atan2(p.y - v.y, p.x - v.x).toFixed(2), d: +dist(v, p).toFixed(1) });
         continue;
@@ -3902,9 +5213,14 @@ const Sim = (() => {
       else { const o = pubPlayer(p, false, g, true); o.lastSeen = p.lastSeen; players.push(o); }
     }
     const shots = g.shots.filter(s => !v || s.team === v.team || (dist(v, s) < 22 && lineClear(v.x, v.y, s.x, s.y))).map(s => ({ id: s.id, team: s.team, x: +s.x.toFixed(2), y: +s.y.toFixed(2), angle: +s.angle.toFixed(2) }));
-    const objects = g.objects.filter(o => !o.dead && objVisible(g, v, o)).map(o => pubObject(o, v));
-    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds, objects, xp: g.xp, level: g.level };
+    const objects = g.objects.filter(o => !o.dead && o.kind !== "phantom" && objVisible(g, v, o)).map(o => pubObject(o, v));
+    if (v) for (const o of g.objects) if (o.kind === "phantom" && !o.dead && phantomAudible(v, o)) sounds.push({ a: +Math.atan2(o.y - v.y, o.x - v.x).toFixed(2), d: +dist(v, o).toFixed(1) });   // 幻灯：偽の足音
+    const I = v && g.intel ? g.intel[v.team] : null;
+    return { phase: g.phase, timer: +g.timer.toFixed(2), time: +g.time.toFixed(2), elapsed: +g.elapsed.toFixed(2), tick: g.tick, overtime: g.overtime, winner: g.winner, claimants: g.claimants, reason: g.reason, players, shots, sounds, objects, xp: g.xp, level: g.level,
+      ms: mapState(g), intel: I ? { known: I.known, floorKnown: !!I.floorKnown, cands: I.candidates, emblems: I.emblems || [] } : null, keys: v && g.keys ? g.keys[v.team] : 0, duration: g.duration };
   }
+  // 波紋は旗の4m以内でしか出ない＝城で旗の位置を伏せている間は、敵の波紋を見せると旗の部屋が分かってしまう
+  function pulseShownTo(g, v) { return curMap.kind !== "castle" || !v || !g.intel || !!g.intel[v.team].known; }
   function objVisible(g, v, o) {
     if (!v) return true;
     if (o.team === v.team) return true;
@@ -3920,23 +5236,28 @@ const Sim = (() => {
   }
   const PUBLIC_LOG = { start: 1, end: 1, overtime: 1, levelup: 1, pulse: 1, botTakeover: 1, "return": 1 };
   function logVisible(g, viewerId, l) {
+    bindMap(g);
     const v = g.players.find(p => p.id === viewerId);
     if (!v) return true;
-    if (l.type === "ping" || l.type === "perk" || l.type === "ult") return l.team === v.team;
-    if (l.team === v.team) return true;
+    if (l.type === "ping" || l.type === "perk" || l.type === "ult" || l.type === "flagfound" || l.type === "emblem" || l.type === "key") return l.team === v.team;
     const mine = id => { const q = id != null && g.players.find(p => p.id === id); return !!q && q.team === v.team; };
+    if (l.type === "pulse" && !pulseShownTo(g, v)) return mine(l.id);
+    if (l.team === v.team) return true;
     if (mine(l.id) || mine(l.by)) return true;
     if (l.type === "skill") { const c = g.players.find(p => p.id === l.id); return !!c && enemyView(v, c) !== "none"; }
     return !!PUBLIC_LOG[l.type];
   }
   // 効果は観戦者に関係あるものだけ（合図は味方のみ）
+  const PLAYER_FX = { portal: 1, shove: 1, unlock: 1, burn: 1, naruko: 1, lantern: 1, shrine: 1, key: 1 };
   function effectVisible(g, viewerId, e) {
+    bindMap(g);
     bindDyn(g);
     const v = g.players.find(p => p.id === viewerId);
     if (!v) return true;
     if (e.type === "ping") return e.team === v.team;
     if (e.type === "win" || e.type === "overtime") return true;
     if (e.team === v.team) return true;
+    if (PLAYER_FX[e.type]) return dist(v, e) <= viewRangeOf(v) && lineClear(v.x, v.y, e.x, e.y);
     return dist(v, e) < 22 && lineClear(v.x, v.y, e.x, e.y);
   }
   function freshAi() {
@@ -3953,17 +5274,19 @@ const Sim = (() => {
   // 観戦側（人間）の可視情報：敵をどう描くか
   function enemyView(viewer, q) {
     if (q.returning > 0) return "none";
-    if (q.exposed > 0 && dist(viewer, q) <= R.viewRange && lineClear(viewer.x, viewer.y, q.x, q.y)) return "revealed";
+    if (q.exposed > 0 && dist(viewer, q) <= viewRangeOf(viewer) && lineClear(viewer.x, viewer.y, q.x, q.y)) return "revealed";
     if (q.reveal > 0) return "revealed";
     if (canSee(viewer, q)) return "seen";
     if (clothVisible(viewer, q)) return "cloth";
     return "none";
   }
 
-  return { R, D, W, H, TICK, FLAG, grid, SOLID, cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
+  return { R, D, TICK, SOLID, LOSBLOCK, LEGACY, get W() { return W; }, get H() { return H; }, get FLAG() { return FLAG; }, get grid() { return grid; }, get map() { return curMap; },
+    bindMap, rebuildDyn, pulseShownTo, mapFor, castleMap, intelFor, mapState, applyMapState, floorAt, viewRangeOf, phantomAudible, searchTarget, resumeWp, updateIntel, axisOf,
+    cellAt, solidCell, blocked, lineClear, zoneAt, dist, angDiff, mirrorX,
     field, steer, createMatch, resetForRematch, makePlayer, setInput, netInput, snapshot, effectVisible, freshAi, assignAi, step, canSee, clothVisible, audible, enemyView, emit, logEvent, returnHome, rng, spawnPos, routeFor,
     useSkill, useUlt, choosePerk, addXp, hasPerk, balanceFor, balNow, skillCdFor, inZone, trackDirFor, bindDyn, logVisible, pathClear, get objects() { return DYN; } };
 })();
 
 
-export { Sim, DATA, CHARS_ALL, BALANCE };
+export { Sim, DATA, CHARS_ALL, BALANCE, Castle };

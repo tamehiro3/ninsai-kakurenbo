@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- オンライン対戦（合言葉の部屋）の画面側を、Cloudflare を使わずに確かめる検証用ページ（公開物ではない）。
+     部屋サーバーの本物のコード（worker/src/room.js＋sim_bundle.js）をこのページの中で動かし、
+     ゲーム（iframe の index.html）の WebSocket と fetch だけを差し替えてつなぐ。
+     http://localhost:8668/tools/online_drive.html?dif=hard&sec=20   （preview の静的サーバー経由で開く） -->
+<html lang="ja"><head><meta charset="utf-8"><title>online drive</title>
+<style>body{margin:0;background:#000;color:#f2e6c4;font:12px "Yu Gothic UI",sans-serif} iframe{border:0;display:block} pre{margin:4px 8px;white-space:pre-wrap}</style></head><body>
+<iframe id="f" src="../index.html"></iframe><pre id="out">running…</pre>
+<script type="module">
+import { Room } from "../worker/src/room.js";
+const q = new URLSearchParams(location.search);
+const f = document.getElementById("f"), out = document.getElementById("out");
+f.style.width = (q.get("w") || 844) + "px"; f.style.height = (q.get("h") || 390) + "px";
+const log = [];
+const say = s => { log.push(s); out.textContent = log.join("\n"); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+f.onload = async () => {
+  try {
+    const w = f.contentWindow, N = w.__ninsai, Net = w.eval("Net"), S = w.eval("Sim"), Rn = w.eval("Render");
+    // 部屋（Durable Object の代わり：保存先はメモリ）
+    const sockets = [];
+    let saved = null;
+    const storage = { get: async () => saved, put: async (k, v) => { saved = v; }, setAlarm: async () => {}, deleteAll: async () => {} };
+    const room = new Room({ blockConcurrencyWhile: fn => fn(), storage, getWebSockets: () => sockets, acceptWebSocket: () => {} }, {});
+    await wait(0);
+    room.lobby = { code: "TEST", hostId: null, players: [], phase: "lobby", difficulty: "normal", created: Date.now() };
+    // ゲーム側の通信だけ差し替える
+    class FakeWS {
+      constructor(url) {
+        this.url = url; this.readyState = 0;
+        const self = this;
+        this.server = { att: { pid: null }, send(s) { setTimeout(() => self.onmessage && self.onmessage({ data: s }), 0); }, close() {}, serializeAttachment(a) { this.att = a; }, deserializeAttachment() { return this.att; } };
+        sockets.push(this.server);
+        setTimeout(() => { this.readyState = 1; this.onopen && this.onopen({}); }, 0);
+      }
+      send(s) { room.webSocketMessage(this.server, s); }
+      close() { this.readyState = 3; }
+    }
+    w.WebSocket = FakeWS;
+    w.fetch = async () => new w.Response(JSON.stringify({ code: "TEST" }), { status: 200 });
+    N.buildLobby();
+    await N.onlineJoin("TEST");
+    say("入室: " + (Net.you && Net.you.id));
+    Net.send({ t: "difficulty", value: q.get("dif") || "normal" });
+    await wait(50);
+    Net.send({ t: "start" });
+    await wait(100);
+    const g = N.g;
+    say(`開始: map=${g && g.map && g.map.kind} 城=${g.map.castle && g.map.castle.typeName} 難易度=${g.map.castle && g.map.castle.diffName} 制限=${g.duration}秒`);
+    const same = room.g.map.rows.map(r => r.join("")).join("|") === g.map.rows.map(r => r.join("")).join("|");
+    say(`端末とサーバーの城が同じ: ${same}（seed ${room.castle && room.castle.seed.slice(0, 28)}…）`);
+    // 自分はサーバー側の Bot に歩かせる（入力なしで城の中を動くところを見る）
+    const gp = room.g.players.find(p => p.id === Net.you.id); room.handOverToBot(gp);
+    Net.send({ t: "depart" });
+    const sec = +(q.get("sec") || 15);
+    await wait((5 + sec) * 1000);
+    const me = N.me, fl = g.map.floors[S.floorAt(me.x, me.y)];
+    const sfl = room.g.map.floors[room.g.map.floorOf[(gp.y | 0) * room.g.map.W + (gp.x | 0)]];
+    say(`経過 ${g.elapsed.toFixed(1)}秒 phase=${g.phase} 残り ${Math.ceil(g.time)}秒 / いま ${fl && fl.id}（サーバー ${sfl && sfl.id}） / 位置差 ${Math.hypot(me.x - gp.x, me.y - gp.y).toFixed(2)}m`);
+    say(`旗の情報（端末） ${JSON.stringify(g.intel[me.team])} / サーバー ${JSON.stringify({ known: room.g.intel[me.team].known, cands: room.g.intel[me.team].candidates.length })}`);
+    say(`地図の状態：鍵扉 開${room.g.map.locks.filter(l => l.open).length}=${g.map.locks.filter(l => l.open).length} 仕掛け扉 開${room.g.map.mechs.filter(m => m.open).length}=${g.map.mechs.filter(m => m.open).length} 版 ${room.g.map.version}/${g.map.version}`);
+    // 描いて撮る（requestAnimationFrame はヘッドレスで進まないので直接）
+    Rn.resize(); Rn.draw(g, me, 1, 0.016); Rn.drawMinimap(w.document.getElementById("minimap"), g, me); N.updateHUD(0.2); N.updateHUD(0.2);
+    // 再戦：別の城（直前と同じ城型は出ない）に作り直されて端末も追いつく
+    const t0 = room.castle.type;
+    room.g.phase = "finished"; await room.rematch(false); await wait(200);
+    say(`再戦: 城 ${t0} → ${room.castle.type}・端末 ${N.g.map.castle.type}・同じ城 ${room.g.map.rows.map(r => r.join("")).join("|") === N.g.map.rows.map(r => r.join("")).join("|")}`);
+    room.stopLoop();
+    document.title = "done";
+  } catch (e) { say("ERROR " + e.stack); document.title = "error"; }
+};
+</script></body></html>

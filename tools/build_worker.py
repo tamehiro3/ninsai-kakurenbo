@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""ゲーム本体の chars.js + balance.js + data.js + sim.js を1本にまとめて、部屋サーバー（worker/src/sim_bundle.js）へ置く。
+"""ゲーム本体の chars.js + balance.js + data.js + castle.js + sim.js を1本にまとめて、部屋サーバー（worker/src/sim_bundle.js）へ置く。
   python ninsai-kakurenbo/tools/build_worker.py
 判定ロジックは常にゲーム側の sim.js が正本。サーバーを公開する前に必ずこれを実行する。
-同梱順は読み込み依存の順（chars → balance → data → sim）。data.js は読み込み時に CHARS_ALL と BALANCE を参照する。
+同梱順は読み込み依存の順（chars → balance → data → castle → sim）。data.js は読み込み時に CHARS_ALL と BALANCE を参照する。
 tools/inspect.py は build() を呼んで、置いてある sim_bundle.js が最新かを確かめる。"""
 import os, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ORDER = ("chars.js", "balance.js", "data.js", "sim.js")
+ORDER = ("chars.js", "balance.js", "data.js", "castle.js", "sim.js")
 DST = os.path.join(ROOT, "worker", "src", "sim_bundle.js")
 # ブラウザ/node 兼用の保険コード（require / module.exports）は ESM バンドルでは邪魔になるので無害化する
 EXPORT_LINES = ('if (typeof module !== "undefined") module.exports = CHARS_ALL;',
                 'if (typeof module !== "undefined") module.exports = BALANCE;',
                 'if (typeof module !== "undefined") module.exports = DATA;',
+                'if (typeof module !== "undefined") module.exports = Castle;',
                 'if (typeof module !== "undefined") module.exports = Sim;')
 
 
@@ -31,7 +32,7 @@ def build():
     left = [l.strip()[:120] for l in out.splitlines() if "require(" in l or "module.exports" in l]
     if left:
         raise RuntimeError("無害化できなかった行があります: " + " / ".join(left))
-    return out + "\nexport { Sim, DATA, CHARS_ALL, BALANCE };\n"
+    return out + "\nexport { Sim, DATA, CHARS_ALL, BALANCE, Castle };\n"
 
 
 def main():

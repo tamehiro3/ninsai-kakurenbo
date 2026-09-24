@@ -22,6 +22,25 @@
     if (!D.CHARS.some(c => c.id === save.settings.charId)) save.settings.charId = "kohaku";
     if (!Array.isArray(save.settings.mates)) save.settings.mates = [null, null];
   }
+  // ---------- 城ダンジョン（castle.js） ----------
+  const CASTLE_ROUTE = ["一の道", "二の道", "三の道"];
+  const roleRouteIdx = role => role === "vanguard" ? 0 : role === "scout" ? 1 : 2;
+  const isCastleG = () => !!(g && g.map && g.map.kind === "castle");
+  // ロールの道の名前（城は試合ごとに道が変わるので「一の道」…で呼ぶ）
+  function routeName(role, nRoutes) {
+    if (!isCastleG() && g) { const r = D.ROLES.find(x => x.id === role); return D.MAP.routes[r.route].name; }
+    const i = roleRouteIdx(role); return CASTLE_ROUTE[nRoutes ? i % nRoutes : i];
+  }
+  // ひとり用の城：seed は端末の時刻＋乱数。城型はシャッフルバッグ（直前と同じ城は引かない）を端末に保存
+  function nextSoloCastle(difficulty) {
+    const cs = save.castle && typeof save.castle === "object" ? save.castle : (save.castle = { n: 0, bag: [], last: null });
+    cs.n = (cs.n | 0) + 1;
+    const seed = "solo:" + Date.now().toString(36) + ":" + cs.n + ":" + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    const d = Castle.drawType(cs.bag, cs.last, seed);
+    cs.bag = d.bag; cs.last = d.type; persist();
+    return { seed, difficulty: difficulty || "normal", type: d.type };
+  }
+  const CASTLE_DIF_NOTE = { easy: "3階（地下〜2F）・旗の階と部屋が分かる・4分", normal: "4〜5階・旗の階だけ分かる・5分", hard: "5〜6階（天守あり）・旗は候補3室・6分" };
   function charRec(id) { if (!save.chars[id]) save.chars[id] = { plays: 0, wins: 0 }; return save.chars[id]; }
   function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 保存できない端末でも遊べる */ } }
   load();
@@ -168,17 +187,17 @@
     $$("#char-grid .cgrid-btn").forEach(b => b.addEventListener("click", () => { lobby.charId = b.dataset.id; Snd.play("ui"); buildLobby(); }));
     $("#team-cards").innerHTML = D.TEAMS.map(t => `<button class="team-card ${t.id === lobby.team ? "sel" : ""}" data-team="${t.id}" style="--tc:${t.color}"><span class="shape">${t.shape}</span>${t.name}チーム<small>${t.id ? "東から出発" : "西から出発"}</small></button>`).join("");
     $$(".team-card").forEach(b => b.addEventListener("click", () => { lobby.team = +b.dataset.team; Snd.play("ui"); buildLobby(); }));
-    $("#role-cards").innerHTML = D.ROLES.map(r => `<button class="role-card ${r.id === lobby.role ? "sel" : ""}" data-role="${r.id}"><b>${r.name}</b><small>${D.MAP.routes[r.route].name}</small><p>${r.desc}</p></button>`).join("");
+    $("#role-cards").innerHTML = D.ROLES.map(r => `<button class="role-card ${r.id === lobby.role ? "sel" : ""}" data-role="${r.id}"><b>${r.name}</b><small>${CASTLE_ROUTE[roleRouteIdx(r.id)]}</small><p>${r.desc}</p></button>`).join("");
     $$(".role-card").forEach(b => b.addEventListener("click", () => { lobby.role = b.dataset.role; lobby.mateRoles = otherRoles(lobby.role); Snd.play("ui"); buildLobby(); }));
     $("#mate-list").innerHTML = lobby.mateRoles.map((rid, i) => {
       const r = D.ROLES.find(x => x.id === rid);
       const cid = lobby.mates[i];
       const c = cid ? D.CHARS[D.charIndex(cid)] : null;
-      return `<button class="mate-slot" data-slot="${i}">${c ? `<img src="img/faces/${c.id}.png" alt="">` : `<span class="q">？</span>`}<div><b>${c ? c.name : "おまかせ"}</b><small>${r.name}（${D.MAP.routes[r.route].name}）</small></div><em>変える</em></button>`;
+      return `<button class="mate-slot" data-slot="${i}">${c ? `<img src="img/faces/${c.id}.png" alt="">` : `<span class="q">？</span>`}<div><b>${c ? c.name : "おまかせ"}</b><small>${r.name}（${CASTLE_ROUTE[roleRouteIdx(r.id)]}）</small></div><em>変える</em></button>`;
     }).join("") + `<button class="btn small" id="btn-swap-mates">担当を入替</button>`;
     $$(".mate-slot").forEach(b => b.addEventListener("click", () => openPicker(+b.dataset.slot)));
     $("#btn-swap-mates").addEventListener("click", () => { lobby.mateRoles.reverse(); Snd.play("ui"); buildLobby(); });
-    $("#dif-cards").innerHTML = Object.entries(D.DIFFICULTY).map(([k, v]) => `<button class="dif-card ${k === lobby.difficulty ? "sel" : ""}" data-dif="${k}">${v.name}</button>`).join("");
+    $("#dif-cards").innerHTML = Object.entries(D.DIFFICULTY).map(([k, v]) => `<button class="dif-card ${k === lobby.difficulty ? "sel" : ""}" data-dif="${k}">${v.name}<small>${CASTLE_DIF_NOTE[k] || ""}</small></button>`).join("");
     $$(".dif-card").forEach(b => b.addEventListener("click", () => { lobby.difficulty = b.dataset.dif; Snd.play("ui"); buildLobby(); }));
   }
   // 味方の指名（おまかせ＝試合ごとに変わる）
@@ -233,7 +252,8 @@
   }
   function startMatch(o) {
     mode = "match"; tutorial = null;
-    g = S.createMatch({ players: buildPlayers(o.swap), seed: (Date.now() % 1000000) | 1, difficulty: lobby.difficulty });
+    g = S.createMatch({ players: buildPlayers(o.swap), seed: (Date.now() % 1000000) | 1, difficulty: lobby.difficulty, castle: nextSoloCastle(lobby.difficulty) });
+    S.bindMap(g);
     me = g.players.find(p => p.id === "me");
     if (o.swap) { lobby.team = 1 - lobby.team; }
     beginBriefing();
@@ -244,10 +264,17 @@
     show("briefing");
     const mc = $("#briefing-map");
     const assign = {};
-    for (const p of g.players) if (p.team === me.team) { const r = D.ROLES.find(x => x.id === p.role); assign[r.route] = (assign[r.route] ? assign[r.route] + "・" : "") + p.name + "＝" + r.name; }
-    Render.drawBriefingMap(mc, me.team, assign);
+    const castle = isCastleG(), nR = castle ? g.map.routes[me.team].length : 0;
+    for (const p of g.players) if (p.team === me.team) { const r = D.ROLES.find(x => x.id === p.role); const key = castle ? roleRouteIdx(p.role) % nR : r.route; assign[key] = (assign[key] ? assign[key] + "・" : "") + p.name + "＝" + r.name; }
+    Render.drawBriefingMap(mc, me.team, assign, g);
     const myRole = D.ROLES.find(x => x.id === me.role);
-    $("#briefing-text").innerHTML = `<b>${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name}チーム</b>で出発。あなたは<b>${myRole.name}</b>（${D.MAP.routes[myRole.route].name}）。<br>${myRole.desc}。<br><small>味方は擬態中でも名前と輪郭が見える。敵は布しか見えない。</small>`;
+    let castleLine = "";
+    if (castle) {
+      const C = g.map.castle, I = g.intel[me.team];
+      const info = I.known ? `旗は <b>${Castle.FLOOR_LABEL[g.map.flagFloor]}</b>（地図の金の点）` : I.floorKnown ? `旗は <b>${Castle.FLOOR_LABEL[g.map.flagFloor]}</b> のどこか。見つけると部屋が分かる` : `旗は <b>候補3室</b>（点線）のどれか。旗印を見つけると偽の候補が消える`;
+      castleLine = `<br><b>${C.typeName}</b>（${C.typeTheme}）・${C.floorsUsed.length}階・${C.diffName}・${Math.round(C.duration / 60)}分。${info}。<br><small>罠「${C.trapName}」＝${C.trapDesc}。予告があり、必ず迂回できる。</small>`;
+    }
+    $("#briefing-text").innerHTML = `<b>${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name}チーム</b>で出発。あなたは<b>${myRole.name}</b>（${routeName(myRole.id, nR)}）。<br>${myRole.desc}。${castleLine}<br><small>味方は擬態中でも名前と輪郭が見える。敵は布しか見えない。</small>`;
     $("#btn-depart").style.display = (mode === "online" && !onlineIsHost()) ? "none" : "";
     $("#btn-depart").textContent = mode === "online" ? "出発（ホスト・3秒後に開始）" : "出発（3秒後に開始）";
     if (mode === "online") startOnlineLoop(); else startLoop();
@@ -464,6 +491,22 @@
     $$("#tree-pick .tp-card").forEach(b => b.addEventListener("pointerdown", e => { chooseTree(b.dataset.tree); e.preventDefault(); e.stopPropagation(); }));
     hud.tree.classList.add("on"); document.body.classList.add("tree-pick-on");
   }
+  // 城：いまの階・旗の情報（階が違う／まだ分からないときはコンパスを薄く）
+  let castleHudKey = "";
+  function updateCastleHud() {
+    const tag = $("#hud-tag"); if (!tag) return;
+    if (!isCastleG()) { hud.compass.style.visibility = ""; if (castleHudKey !== "legacy") { castleHudKey = "legacy"; tag.textContent = "城の旗を先に掴め"; } return; }
+    const m = g.map, fi = S.floorAt(me.x, me.y), fl = m.floors[fi === 255 ? 0 : fi], I = (g.intel && g.intel[me.team]) || { known: false, floorKnown: false, candidates: [] };
+    const here = fl.id === m.flagFloor;
+    let info;
+    if (I.known) info = here ? "旗はこの階" : `旗は ${Castle.FLOOR_LABEL[m.flagFloor]}`;
+    else if (I.floorKnown) info = here ? "旗はこの階のどこか" : `旗は ${Castle.FLOOR_LABEL[m.flagFloor]}（部屋は不明）`;
+    else info = `旗の候補 ${I.candidates.length}室`;
+    const keys = g.keys ? (typeof g.keys === "number" ? g.keys : g.keys[me.team]) : 0;
+    const text = `${m.castle.typeName}｜いま ${Castle.FLOOR_LABEL[fl.id]}｜${info}${keys > 0 ? `｜🔑${keys}` : ""}`;
+    hud.compass.style.visibility = (I.known && here) || g.phase === "finished" ? "" : "hidden";
+    if (text !== castleHudKey) { castleHudKey = text; tag.textContent = text; }
+  }
   function updateHUD(dt) {
     // カウントダウン
     if (g.phase === "countdown") { hud.count.textContent = Math.ceil(g.timer); hud.count.classList.add("on"); }
@@ -471,11 +514,12 @@
     else if (g.phase === "finished") { hud.count.classList.add("on"); hud.count.textContent = g.reason === "timeout" ? "引き分け" : g.winner.length > 1 ? "同着！" : (g.winner[0] === me.team ? "優勝！" : "敗北…"); }
     else hud.count.classList.remove("on");
     // 旗コンパス
-    const tgt = (tutorial && Render.opts.marker) || D.MAP.flag;
+    const tgt = (tutorial && Render.opts.marker) || S.FLAG;
     const an = Math.atan2(tgt.y - me.y, tgt.x - me.x);
     hud.compass.style.transform = `rotate(${an}rad)`;
+    updateCastleHud();
     // 旗ボタン
-    const inRange = S.dist(me, D.MAP.flag) <= R.flagRadius && me.returning <= 0;
+    const inRange = S.dist(me, S.FLAG) <= R.flagRadius && me.returning <= 0;
     hud.claim.classList.toggle("on", inRange && g.phase === "playing");
     hud.claim.classList.toggle("blocked", inRange && (me.camo > 0 || me.protect > 0 || me.exposed > 0));
     // クールダウン
@@ -497,7 +541,7 @@
     hud.ult.classList.toggle("on", ultOn);
     if (ultOn) {
       hud.ultLabel.textContent = ultName(tree5);
-      const blocked = me.exposed > 0 || (tree5 === "影" && (me.camo !== 2 || S.dist(me, D.MAP.flag) < 3)) || (tree5 === "技" && !(me.skillCd > 0));
+      const blocked = me.exposed > 0 || (tree5 === "影" && (me.camo !== 2 || S.dist(me, S.FLAG) < 3)) || (tree5 === "技" && !(me.skillCd > 0));
       hud.ult.classList.toggle("blocked", blocked);
       hud.ult.title = tree5 === "影" ? "擬態中・旗から3m以上で使える" : tree5 === "技" ? "固有技の回復待ちのときに使える" : "8秒間、4m以内の味方の被ダメージを12%減らす";
     }
@@ -567,7 +611,7 @@
       else if (hpNow < HP.minCamoHp) { text = (D.CAMO_REASONS.hp || "HPが{n}未満（手当か自陣で回復）").replace("{n}", HP.minCamoHp); cls = "warn"; }
       else if (chan) { text = (CHANNEL_NAMES[chan] || "技の最中") + "は使えない"; cls = "warn"; }
       else if (hasMod(me, "noCamo")) { text = D.CAMO_REASONS.noCamo || "鬼灯の効果中は使えない"; cls = "warn"; }
-      else if (S.dist(me, D.MAP.flag) <= R.flagNoCamo) text = D.CAMO_REASONS.flag;
+      else if (S.dist(me, S.FLAG) <= R.flagNoCamo) text = D.CAMO_REASONS.flag;
       else if (!z) text = D.CAMO_REASONS.zone;
       else if (me.camoCd > 0) text = D.CAMO_REASONS.cd.replace("{n}", Math.ceil(me.camoCd));
       else if (me.speedNow > 0.1) text = D.CAMO_REASONS.move;
@@ -617,6 +661,24 @@
         case "healed":
           if (e.by === me.id) { toast(`${who(e.id)}を手当した`, "good"); Snd.play("heal"); }
           else if (e.id === me.id) { toast(`${who(e.by)}に手当してもらった`, "good"); }
+          break;
+        case "flagfound":
+          if (e.team === me.team && isCastleG()) { toast(`${e.id ? who(e.id) + "が" : ""}旗を見つけた！（${Castle.FLOOR_LABEL[g.map.flagFloor]}）`, "good"); Snd.play("found"); }
+          break;
+        case "emblem":
+          if (e.team === me.team) { toast(`${who(e.id)}が旗印を見つけた：偽の候補が1つ消えた`, "info"); Snd.play("pick"); }
+          break;
+        case "key":
+          if (e.team === me.team) { toast(`${who(e.id)}が鍵を拾った（近道の扉を開けられる）`, "info"); Snd.play("pick"); }
+          break;
+        case "unlock":
+          if (e.team === me.team) { toast("近道が開いた", "good"); Snd.play("ui"); }
+          break;
+        case "trap":
+          if (e.id === me.id) {
+            const TRAP_MSG = { naruko: "鳴子を踏んだ！ 3秒だけ足跡が敵に見える", current: "急流に流された（HPは減らない）", brazier: `火鉢で -${e.dmg || 8}（HP1未満にはならない）`, lantern: "幻灯が偽の足音を鳴らした", pushwall: "押し壁に押し出された（HPは減らない）" };
+            toast(TRAP_MSG[e.kind] || "罠にかかった", "bad"); Snd.play("warn");
+          }
           break;
         case "levelup":
           if (e.team === me.team) { toast(`チーム Lv.${e.level}！ 系統を選ぼう（5秒）`, "info"); Snd.play("levelup"); }
@@ -711,14 +773,14 @@
     const line = lines[Math.floor(Math.random() * lines.length)] || "";
     const sc = D.CHARS[speaker.char];
     $("#result-hero").innerHTML = `<img src="img/chars/${sc.id}_${sc.painted ? (win || tie ? "happy" : "surprised") : "front"}.png" alt=""><div class="bubble"><b>${sc.name}</b><br>${line}</div>`;
-    $("#result-sub").textContent = timeout ? `${R.duration + R.overtime}秒、どちらも旗を掴めなかった` : `${claimers.map(p => (p === me ? "あなた" : p.name) + "（" + D.TEAMS[p.team].name + "）").join("・")}が ${g.elapsed.toFixed(1)}秒 で旗を掴んだ${g.overtime ? "（延長）" : ""}`;
+    $("#result-sub").textContent = timeout ? `${(g.duration || R.duration) + R.overtime}秒、どちらも旗を掴めなかった` : `${claimers.map(p => (p === me ? "あなた" : p.name) + "（" + D.TEAMS[p.team].name + "）").join("・")}が ${g.elapsed.toFixed(1)}秒 で旗を掴んだ${g.overtime ? "（延長）" : ""}`;
     const rows = g.players.filter(p => p.team === me.team).map(p => { const r = D.ROLES.find(x => x.id === p.role), s = p.stats || {}; return `<tr><td>${p === me ? "あなた" : p.name}<small>${r ? r.name : ""}</small></td><td>${n0(s.hides)}</td><td>${n0(s.reveals)}</td><td>${n0(s.hits)}</td><td>${Math.round(n0(s.damage))}</td><td>${n0(s.hp0)}</td><td>${n0(s.heals)}</td><td>${n0(s.skills)}</td><td>${n0(s.pings)}</td></tr>`; });
     const lvA = (g.level && g.level[me.team]) || 1, lvB = (g.level && g.level[1 - me.team]) || 1;
     $("#result-table").innerHTML = `<tr><td colspan="9" class="result-level">最終レベル：${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name} Lv.${lvA}（${D.TEAMS[1 - me.team].shape} ${D.TEAMS[1 - me.team].name} Lv.${lvB}）</td></tr><tr><th>味方</th><th>擬態</th><th>見破り</th><th>命中</th><th>与ダメ</th><th>被露見</th><th>手当</th><th>固有技</th><th>合図</th></tr>${rows.join("")}`;
     Snd.stopAmbient();
   }
-  $("#btn-rematch").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", false); return; } S.resetForRematch(g, false); me = g.players.find(p => p.id === "me"); beginBriefing(); });
-  $("#btn-rematch-swap").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", true); return; } S.resetForRematch(g, true); me = g.players.find(p => p.id === "me"); lobby.team = me.team; beginBriefing(); });
+  $("#btn-rematch").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", false); return; } S.resetForRematch(g, false, isCastleG() ? { castle: nextSoloCastle(g.map.castle.difficulty) } : null); S.bindMap(g); me = g.players.find(p => p.id === "me"); beginBriefing(); });
+  $("#btn-rematch-swap").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("rematch", true); return; } S.resetForRematch(g, true, isCastleG() ? { castle: nextSoloCastle(g.map.castle.difficulty) } : null); S.bindMap(g); me = g.players.find(p => p.id === "me"); lobby.team = me.team; beginBriefing(); });
   $("#btn-to-lobby").addEventListener("click", () => { Snd.play("ui"); if (mode === "online") { onlineNext("tolobby"); return; } endMatch(); buildLobby(); show("lobby"); });
 
   // ---------- 図鑑 ----------
@@ -998,7 +1060,7 @@
       $$("#room-me [data-role]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); Net.send({ t: "set", role: b.dataset.role }); }));
     }
     const host = onlineIsHost();
-    $("#room-dif").innerHTML = Object.entries(D.DIFFICULTY).map(([k, v]) => `<button class="dif-card ${k === (L.difficulty || "normal") ? "sel" : ""}" data-dif="${k}" ${host ? "" : "disabled"}>${v.name}</button>`).join("");
+    $("#room-dif").innerHTML = Object.entries(D.DIFFICULTY).map(([k, v]) => `<button class="dif-card ${k === (L.difficulty || "normal") ? "sel" : ""}" data-dif="${k}" ${host ? "" : "disabled"}>${v.name}<small>${CASTLE_DIF_NOTE[k] || ""}</small></button>`).join("");
     $$("#room-dif .dif-card").forEach(b => b.addEventListener("click", () => { if (!host) return; Snd.play("ui"); Net.send({ t: "difficulty", value: b.dataset.dif }); }));
     const humans = L.players.filter(p => p.connected).length;
     $("#btn-room-start").style.display = host ? "" : "none";
@@ -1021,10 +1083,16 @@
 
   // 試合開始（サーバーから）
   function startOnlineMatch(m) {
-    mode = "online"; tutorial = null; online.lobby = m.lobby || online.lobby; online.endMsg = null; online.byId = new Map();
-    g = { phase: "briefing", timer: R.briefing, time: R.duration, elapsed: 0, tick: 0, overtime: false, winner: [], claimants: [], reason: "", players: [], shots: [], effects: [], log: [], sounds: [], objects: [], xp: [0, 0], level: [1, 1], practice: false, noTimer: false, difficulty: D.DIFFICULTY[(online.lobby && online.lobby.difficulty) || "normal"] };
+    mode = "online"; tutorial = null; online.lobby = m.lobby || online.lobby; online.endMsg = null; online.byId = new Map(); online.lastLogTick = -1; online.lastEff = 0;
+    const map = S.mapFor(m.castle ? { castle: m.castle, difficulty: m.castle.difficulty } : null);
+    const dur = map.kind === "castle" ? map.castle.duration : R.duration;
+    g = { phase: "briefing", timer: R.briefing, time: dur, duration: dur, elapsed: 0, tick: 0, overtime: false, winner: [], claimants: [], reason: "", players: [], shots: [], effects: [], log: [], sounds: [], objects: [], xp: [0, 0], level: [1, 1], practice: false, noTimer: false, difficulty: D.DIFFICULTY[(online.lobby && online.lobby.difficulty) || "normal"],
+      map, intel: S.intelFor(map), keys: [0, 0], mapT: 0 };
+    S.bindMap(g);
+    const slotOf = [0, 0];
     for (const sp of m.players) {
-      const p = Object.assign(onlinePlayerDefaults(), { id: sp.id, team: sp.team, char: sp.char, role: sp.role, name: sp.name, bot: sp.bot, x: sp.team ? 60 : 4, y: 24, px: sp.team ? 60 : 4, py: 24, angle: sp.team ? Math.PI : 0 });
+      const pos = map.spawn[sp.team][(slotOf[sp.team]++) % 3];
+      const p = Object.assign(onlinePlayerDefaults(), { id: sp.id, team: sp.team, char: sp.char, role: sp.role, name: sp.name, bot: sp.bot, x: pos.x, y: pos.y, px: pos.x, py: pos.y, angle: sp.team ? Math.PI : 0 });
       online.byId.set(p.id, p); g.players.push(p);
     }
     me = online.byId.get(Net.you.id) || g.players[0];
@@ -1040,8 +1108,16 @@
   function applySnapshot(m) {
     if (!g || mode !== "online") return;
     online.snapAt = performance.now();
+    // 取りこぼした再戦（別の城）に追いつく：全量スナップショットの城 spec が手元の城と違えば組み立て直す
+    if (m.castle && (!g.map || !g.map.castle || g.map.castle.baseSeed !== m.castle.seed)) { g.map = S.mapFor({ castle: m.castle, difficulty: m.castle.difficulty }); g.intel = S.intelFor(g.map); online.lastLogTick = -1; online.lastEff = 0; }
+    S.bindMap(g);
     Object.assign(g, { phase: m.phase, timer: m.timer, time: m.time, elapsed: m.elapsed, tick: m.tick, overtime: m.overtime, winner: m.winner, claimants: m.claimants, reason: m.reason });
+    if (m.duration) g.duration = m.duration;
+    if (m.ms) S.applyMapState(g, m.ms);
+    if (m.intel && me && g.intel) g.intel[me.team] = { known: !!m.intel.known, floorKnown: !!m.intel.floorKnown, candidates: m.intel.cands || [], emblems: m.intel.emblems || [] };
+    if (m.keys != null && me && g.keys) g.keys[me.team] = m.keys;
     if (Array.isArray(m.objects)) g.objects = m.objects;
+    S.rebuildDyn(g);          // 視線・通れる場所の判定をサーバーと同じ設置物（金剛壁・霧・城の霧庭）で
     if (Array.isArray(m.xp)) g.xp = m.xp;
     if (Array.isArray(m.level)) g.level = m.level;
     const seen = new Set();
@@ -1067,8 +1143,10 @@
     }
     g.players = g.players.filter(p => seen.has(p.id) || p === me);
     g.shots = m.shots || []; g.sounds = m.sounds || [];
-    for (const e of (m.effects || [])) { e.played = false; g.effects.push(e); }
-    for (const l of (m.log || [])) g.log.push(l);
+    // 再接続の全量スナップショットは受け取り済みのログ・効果も含む＝二度鳴らさない
+    const lt = online.lastLogTick == null ? -1 : online.lastLogTick, le = online.lastEff || 0;
+    for (const e of (m.effects || [])) { if (e.id != null && e.id <= le) continue; e.played = false; g.effects.push(e); online.lastEff = Math.max(online.lastEff || 0, e.id || 0); }
+    for (const l of (m.log || [])) { if (l.tick != null && l.tick <= lt) continue; g.log.push(l); online.lastLogTick = Math.max(online.lastLogTick == null ? -1 : online.lastLogTick, l.tick == null ? -1 : l.tick); }
     if (g.effects.length > 120) g.effects.splice(0, g.effects.length - 120);
   }
   function onlineInput(x, y, acts, angle) {

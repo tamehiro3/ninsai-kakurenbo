@@ -1,6 +1,6 @@
 // 合言葉ごとの部屋（Durable Object）。ロビー→作戦→試合→結果→ロビー を管理し、判定は sim.js で行う。
 // 設計書09：入力は「方向と行動」だけ受け取り、座標・命中・旗取得はここが決める。切断は20秒の猶予のあとBotが引き継ぐ。
-import { Sim, DATA } from "./sim_bundle.js";
+import { Sim, DATA, Castle } from "./sim_bundle.js";
 
 const TICK_MS = 1000 / 30;
 const SNAP_EVERY = 2;                 // 15Hz で配信
@@ -11,7 +11,8 @@ const ROLES = ["vanguard", "scout", "decoy"];
 
 // 効果（g.effects）のうち観戦者へ送る項目。HP・レベル・固有技で増えた項目（dmg/hp/level/tree/tx/ty/r/decoy/kind/owner）も通す
 const EFFECT_KEYS = ["id", "type", "x", "y", "life", "maxLife", "team", "angle", "owner", "target", "text", "icon", "kind", "marks",
-  "dmg", "hp", "level", "tree", "tx", "ty", "r", "decoy", "mark"];
+  "dmg", "hp", "level", "tree", "tx", "ty", "r", "decoy", "mark",
+  "open", "heal", "dx", "dir"];     // 城ダンジョン（仕掛け扉・祠・押し壁・上下移動）
 function pubEffect(e) { const o = {}; for (const k of EFFECT_KEYS) if (e[k] !== undefined) o[k] = e[k]; return o; }
 function rid(n = 8) { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, x => x.toString(16).padStart(2, "0")).join(""); }
 function pickChar(exclude) {
@@ -168,12 +169,24 @@ export class Room {
         n++;
       }
     }
-    this.g = Sim.createMatch({ players, seed: (Date.now() % 1000000) | 1, difficulty: L.difficulty || "normal" });
+    this.castle = this.nextCastle();
+    this.g = Sim.createMatch({ players, seed: (Date.now() % 1000000) | 1, difficulty: L.difficulty || "normal", castle: this.castle });
     L.phase = "match"; this.endAt = 0; this.lastSent = new Map();
     await this.save();
-    this.broadcast({ t: "start", lobby: this.publicLobby(), players: this.g.players.map(p => ({ id: p.id, team: p.team, char: p.char, role: p.role, name: p.name, bot: p.bot })) });
+    this.broadcast(this.startMsg());
     this.startLoop();
   }
+  // 城ダンジョン：部屋の合言葉・何試合目か・サーバーの乱数（128bit）から seed を作り、城型はシャッフルバッグで巡る（直前と同じ城は引かない）
+  nextCastle() {
+    const L = this.lobby;
+    L.castleN = (L.castleN || 0) + 1;
+    const seed = "room:" + L.code + ":" + L.castleN + ":" + rid(16);
+    const d = Castle.drawType(L.castleBag, L.castleLast, seed);
+    L.castleBag = d.bag; L.castleLast = d.type;
+    return { seed, difficulty: L.difficulty || "normal", type: d.type };
+  }
+  // 端末は同じ spec から同じ城を組み立てる（城の地形は送らない）
+  startMsg() { return { t: "start", lobby: this.publicLobby(), castle: this.castle || null, players: this.g.players.map(p => ({ id: p.id, team: p.team, char: p.char, role: p.role, name: p.name, bot: p.bot })) }; }
   startLoop() {
     this.stopLoop();
     this.tickCount = 0;
@@ -202,21 +215,22 @@ export class Room {
     snap.effects = g.effects.filter(e => e.id > last.eff && Sim.effectVisible(g, pid, e)).map(pubEffect);
     // ログは観戦者に関係あるものだけ（合図・系統・奥義は味方だけ、見えていない敵の固有技は送らない）＝ Sim.logVisible
     snap.log = g.log.filter(l => l.tick > last.logTick && Sim.logVisible(g, pid, l));
-    if (full) snap.full = true;
+    if (full) { snap.full = true; snap.castle = this.castle || null; }
     this.lastSent.set(pid, { eff: g.effects.length ? Math.max(last.eff, ...g.effects.map(e => e.id)) : last.eff, logTick: g.log.length ? g.log[g.log.length - 1].tick : last.logTick });
     this.send(ws, snap);
   }
   async rematch(swap) {
     if (!this.g) return;
-    Sim.resetForRematch(this.g, swap);
+    this.castle = this.nextCastle();
+    Sim.resetForRematch(this.g, swap, { castle: this.castle });
     if (swap) for (const p of this.lobby.players) p.team = 1 - p.team;
     this.endAt = 0; this.lastSent = new Map();
     await this.save();
-    this.broadcast({ t: "start", lobby: this.publicLobby(), players: this.g.players.map(p => ({ id: p.id, team: p.team, char: p.char, role: p.role, name: p.name, bot: p.bot })) });
+    this.broadcast(this.startMsg());
     this.startLoop();
   }
   async toLobby() {
-    this.stopLoop(); this.g = null; this.endAt = 0;
+    this.stopLoop(); this.g = null; this.castle = null; this.endAt = 0;
     const L = this.lobby; L.phase = "lobby";
     L.players = L.players.filter(x => x.connected);
     if (!L.players.some(x => x.id === L.hostId)) L.hostId = L.players[0] ? L.players[0].id : null;

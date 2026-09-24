@@ -1,6 +1,7 @@
 // 忍彩かくれんぼ — 描画（見下ろし2D・Canvas）。可視判定は Sim の関数を使い、見えない敵は描かない
 const Render = (() => {
-  const S = Sim, R = Sim.R, D = Sim.D, W = Sim.W, H = Sim.H, FLAG = Sim.FLAG;
+  const S = Sim, R = Sim.R, D = Sim.D;
+  let W = Sim.W, H = Sim.H, FLAG = Sim.FLAG;      // 試合ごとの地図（syncMap で結び直す）
   let cv, ctx, dpr = 1, Wpx = 0, Hpx = 0;
   let ppm = 26, zoom = 1;
   let floorCv = null, floorPpm = 0;
@@ -25,6 +26,9 @@ const Render = (() => {
     sand: "#6a5d46", sandDot: "#7a6c53",
     B: "#233647", O: "#46321f",
     yellow: "#FFD84A", red: "#D9483B", white: "#ffffff",
+    // 城ダンジョン
+    water: "#2f5a74", waterLine: "#5d93b5", plank: "#5a4632", plankLine: "#6f583f", crawl: "#2a2824", crawlBeam: "#4a3a2b", mechTrack: "#6a5a44",
+    stair: "#4b4436", stairLine: "#6d6450", door: "#7a5636", doorDark: "#4a3322", window: "#56626e",
   };
   const TEAM = D.TEAMS;
 
@@ -40,7 +44,7 @@ const Render = (() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const short = Math.min(Wpx, Hpx);
     ppm = Math.max(16, Math.min(44, short / 15)) * zoom;
-    if (floorPpm !== ppm) prerenderFloor();
+    if (floorPpm !== ppm) floorCv = null;          // 次の描画（syncMap）で描き直す
     darkCv = document.createElement("canvas"); darkCv.width = cv.width; darkCv.height = cv.height;
   }
   function loadAssets() {
@@ -56,55 +60,165 @@ const Render = (() => {
     }))).then(() => { assetsReady = true; });
   }
 
-  // ---------- 床の事前描画 ----------
+  // ---------- 地図（試合ごと）・いまの階 ----------
+  // 城ダンジョンは全階を1枚の地図に横並びで持つ（castle.js）。描くのは見ている人の階だけ
+  let mapRef = null, mapVer = -1, curFloor = null;
+  const mapOf = g => (g && g.map) || Sim.LEGACY;
+  const isCastle = () => !!(mapRef && mapRef.kind === "castle");
+  function floorRectOf(m, x, y) {
+    if (!m || !m.floors) return { id: "1F", ox: 0, oy: 0, w: W, h: H, index: 0 };
+    const fi = Sim.floorAt(x, y);
+    return m.floors[fi === 255 || fi == null ? 0 : fi] || m.floors[0];
+  }
+  const sameFloor = (a, b) => !isCastle() || Sim.floorAt(a.x, a.y) === Sim.floorAt(b.x, b.y);
+  // 描く前に、試合の地図を Sim に結び直して、階が変わったら床を描き直す
+  function syncMap(g, viewer) {
+    if (g) { Sim.bindMap(g); if (Sim.bindDyn && g.dyn) Sim.bindDyn(g); }
+    const m = mapOf(g);
+    W = Sim.W; H = Sim.H; FLAG = Sim.FLAG;
+    const fr = floorRectOf(m, viewer ? viewer.x : FLAG.x, viewer ? viewer.y : FLAG.y);
+    if (m !== mapRef || m.version !== mapVer || !curFloor || fr.id !== curFloor.id || floorPpm !== ppm || !floorCv) {
+      if (m !== mapRef) { miniCache.clear(); objMax.clear(); }
+      if (m.version !== mapVer) miniCache.clear();
+      mapRef = m; mapVer = m.version; curFloor = fr;
+      prerenderFloor();
+    }
+  }
+  // 旗の情報（見ている人のチーム）。固定マップはいつも分かっている
+  function intelOf(g, team) {
+    if (!isCastle()) return { known: true, floorKnown: true, candidates: [] };
+    return (g && g.intel && g.intel[team]) || { known: false, floorKnown: false, candidates: [] };
+  }
+  const portalOf = (x, y) => (mapRef && mapRef.portalAt) ? mapRef.portalAt.get(y * W + x) : null;
+  const trapOf = (x, y) => (mapRef && mapRef.trapAt) ? mapRef.trapAt.get(y * W + x) : null;
+  const pushOf = (x, y) => (mapRef && mapRef.pushes) ? mapRef.pushes.find(pw => pw.cells.some(([cx, cy]) => cx === x && cy === y)) : null;
+  const floorLabel = id => (typeof Castle !== "undefined" && Castle.FLOOR_LABEL[id]) || id;
+
+  // ---------- 床の事前描画（いまの階だけ） ----------
+  function groundCell(f, c, x, y, px, py, rnd) {
+    const s = ppm;
+    let base = C.ground;
+    if (c === "b") base = C.b; else if (c === "s") base = C.s; else if (c === "w") base = C.w; else if (c === "~") base = C.sand;
+    else if (c === "B") base = C.B; else if (c === "O") base = C.O; else if (c === "=" || c === "c") base = C.water; else if (c === "q" || c === "y") base = C.plank;
+    else if (c === "u") base = C.crawl; else if ((x + y) % 2) base = C.ground2;
+    f.fillStyle = base; f.fillRect(px, py, s + 1, s + 1);
+    if (c === "b") { f.fillStyle = C.bLine; for (let i = 0; i < 3; i++) f.fillRect(px + s * (0.15 + i * 0.33), py, Math.max(1, s * 0.09), s + 1); }
+    else if (c === "s") { f.fillStyle = C.sDot; for (let i = 0; i < 4; i++) { const r = s * 0.09; f.beginPath(); f.arc(px + s * (0.22 + (i % 2) * 0.5) + (rnd() - 0.5) * s * 0.15, py + s * (0.25 + ((i / 2) | 0) * 0.5), r, 0, 7); f.fill(); } }
+    else if (c === "w") { f.fillStyle = C.wLine; for (let i = 0; i < 3; i++) f.fillRect(px, py + s * (0.18 + i * 0.32), s + 1, Math.max(1, s * 0.07)); }
+    else if (c === "~") { f.fillStyle = C.sandDot; for (let i = 0; i < 5; i++) f.fillRect(px + rnd() * s, py + rnd() * s, 1.5, 1.5); }
+    else if (c === "." && rnd() < 0.25) { f.fillStyle = "rgba(255,255,255,0.03)"; f.fillRect(px + rnd() * s, py + rnd() * s, 2, 2); }
+    else if (c === "=") { f.strokeStyle = C.waterLine; f.lineWidth = 1; for (let i = 0; i < 2; i++) { const yy = py + s * (0.3 + i * 0.4); f.beginPath(); f.moveTo(px + s * 0.1, yy); f.quadraticCurveTo(px + s * 0.3, yy - s * 0.08, px + s * 0.5, yy); f.quadraticCurveTo(px + s * 0.7, yy + s * 0.08, px + s * 0.9, yy); f.stroke(); } }
+    else if (c === "q") { f.fillStyle = C.plankLine; for (let i = 1; i < 4; i++) f.fillRect(px, py + s * i / 4, s + 1, 1); }
+    else if (c === "u") { f.fillStyle = C.crawlBeam; f.fillRect(px, py + s * 0.12, s + 1, s * 0.12); f.fillRect(px, py + s * 0.76, s + 1, s * 0.12); f.fillStyle = "rgba(0,0,0,0.25)"; f.fillRect(px, py + s * 0.24, s + 1, s * 0.52); }
+    else if (c === "y") { f.strokeStyle = C.plankLine; f.lineWidth = 1.5; f.strokeRect(px + 1.5, py + 1.5, s - 3, s - 3); f.beginPath(); f.moveTo(px + 2, py + 2); f.lineTo(px + s - 2, py + s - 2); f.moveTo(px + s - 2, py + 2); f.lineTo(px + 2, py + s - 2); f.stroke(); }
+    else if (c === "m") { f.fillStyle = C.mechTrack; f.fillRect(px + s * 0.1, py + s * 0.42, s * 0.8, s * 0.16); }
+  }
+  // 階段・降下・祠・スイッチ・罠（予告つき）の絵
+  function markCell(f, c, x, y, px, py) {
+    const s = ppm, cx = px + s / 2, cy = py + s / 2;
+    if (c === "^" || c === "v") {
+      f.fillStyle = C.stair; f.fillRect(px, py, s + 1, s + 1);
+      f.fillStyle = C.stairLine; for (let i = 0; i < 4; i++) f.fillRect(px + s * 0.08, py + s * (0.12 + i * 0.22), s * 0.84, Math.max(1.5, s * 0.07));
+      f.fillStyle = c === "^" ? "#f2e6c4" : "#9fd3ff"; f.beginPath();
+      if (c === "^") { f.moveTo(cx, py + s * 0.12); f.lineTo(cx + s * 0.28, py + s * 0.5); f.lineTo(cx - s * 0.28, py + s * 0.5); }
+      else { f.moveTo(cx, py + s * 0.88); f.lineTo(cx + s * 0.28, py + s * 0.5); f.lineTo(cx - s * 0.28, py + s * 0.5); }
+      f.closePath(); f.fill();
+    } else if (c === "z") {
+      f.fillStyle = "#0b0f14"; f.beginPath(); f.ellipse(cx, cy, s * 0.42, s * 0.36, 0, 0, 7); f.fill();
+      f.strokeStyle = "#8a6e52"; f.lineWidth = 2; f.stroke();
+      f.fillStyle = "#9fd3ff"; f.beginPath(); f.moveTo(cx, cy + s * 0.28); f.lineTo(cx + s * 0.16, cy + s * 0.02); f.lineTo(cx - s * 0.16, cy + s * 0.02); f.closePath(); f.fill();
+    } else if (c === "H") {
+      f.fillStyle = "#c8452f"; f.fillRect(px + s * 0.18, py + s * 0.2, s * 0.64, s * 0.1); f.fillRect(px + s * 0.12, py + s * 0.12, s * 0.76, s * 0.08);
+      f.fillRect(px + s * 0.26, py + s * 0.2, s * 0.08, s * 0.6); f.fillRect(px + s * 0.66, py + s * 0.2, s * 0.08, s * 0.6);
+      f.fillStyle = "rgba(143,242,164,0.35)"; f.beginPath(); f.arc(cx, cy + s * 0.12, s * 0.18, 0, 7); f.fill();
+    } else if (c === "S") {
+      f.fillStyle = "#3a3024"; f.fillRect(px + s * 0.25, py + s * 0.55, s * 0.5, s * 0.25);
+      f.strokeStyle = C.brass; f.lineWidth = Math.max(2, s * 0.08); f.beginPath(); f.moveTo(cx, py + s * 0.62); f.lineTo(cx + s * 0.22, py + s * 0.2); f.stroke();
+      f.fillStyle = C.brass; f.beginPath(); f.arc(cx + s * 0.22, py + s * 0.2, s * 0.09, 0, 7); f.fill();
+    } else if (c === "n") {           // 鳴子：縄と鈴
+      f.strokeStyle = "#c9b17d"; f.lineWidth = 1.5; f.beginPath(); f.moveTo(px, cy); f.lineTo(px + s, cy); f.stroke();
+      f.fillStyle = "#e8c65a"; for (let i = 0; i < 3; i++) { f.beginPath(); f.arc(px + s * (0.2 + i * 0.3), cy + s * 0.08, s * 0.08, 0, 7); f.fill(); }
+    } else if (c === "c") {           // 急流：流れる向きの矢
+      const tr = trapOf(x, y), d = tr && tr.dir ? tr.dir : [1, 0];
+      f.save(); f.translate(cx, cy); f.rotate(Math.atan2(d[1], d[0]));
+      f.strokeStyle = "#dff4ff"; f.lineWidth = Math.max(1.5, s * 0.07);
+      for (let i = -1; i <= 1; i++) { f.beginPath(); f.moveTo(-s * 0.1 + i * s * 0.28, -s * 0.18); f.lineTo(s * 0.08 + i * s * 0.28, 0); f.lineTo(-s * 0.1 + i * s * 0.28, s * 0.18); f.stroke(); }
+      f.restore();
+    } else if (c === "f") {           // 火鉢
+      f.fillStyle = "rgba(255,140,60,0.25)"; f.beginPath(); f.arc(cx, cy, s * 0.48, 0, 7); f.fill();
+      f.fillStyle = "#4a3a2b"; f.beginPath(); f.ellipse(cx, cy + s * 0.12, s * 0.3, s * 0.18, 0, 0, 7); f.fill();
+      f.fillStyle = "#ff9a3c"; f.beginPath(); f.moveTo(cx, cy - s * 0.3); f.quadraticCurveTo(cx + s * 0.2, cy, cx, cy + s * 0.08); f.quadraticCurveTo(cx - s * 0.2, cy, cx, cy - s * 0.3); f.fill();
+    } else if (c === "l") {           // 幻灯：提灯
+      f.fillStyle = "rgba(255,220,150,0.18)"; f.beginPath(); f.arc(cx, cy, s * 0.46, 0, 7); f.fill();
+      f.fillStyle = "#f0dcae"; f.beginPath(); f.ellipse(cx, cy, s * 0.2, s * 0.28, 0, 0, 7); f.fill();
+      f.strokeStyle = "#c8452f"; f.lineWidth = 1; for (let i = -1; i <= 1; i++) { f.beginPath(); f.moveTo(cx - s * 0.2, cy + i * s * 0.1); f.lineTo(cx + s * 0.2, cy + i * s * 0.1); f.stroke(); }
+    } else if (c === "p") {           // 押し壁：黄黒の予告帯＋押す向き
+      f.save(); f.beginPath(); f.rect(px, py, s + 1, s + 1); f.clip();
+      f.fillStyle = "rgba(230,190,60,0.55)"; f.fillRect(px, py, s + 1, s + 1);
+      f.fillStyle = "rgba(20,20,20,0.55)"; for (let i = -2; i < 4; i++) { f.beginPath(); f.moveTo(px + i * s * 0.4, py + s); f.lineTo(px + i * s * 0.4 + s * 0.2, py + s); f.lineTo(px + i * s * 0.4 + s * 0.6, py); f.lineTo(px + i * s * 0.4 + s * 0.4, py); f.closePath(); f.fill(); }
+      f.restore();
+      const pw = pushOf(x, y);
+      if (pw) { f.fillStyle = "#fff"; f.beginPath(); const an = Math.atan2(pw.dy, pw.dx); f.moveTo(cx + Math.cos(an) * s * 0.34, cy + Math.sin(an) * s * 0.34); f.lineTo(cx + Math.cos(an + 2.5) * s * 0.26, cy + Math.sin(an + 2.5) * s * 0.26); f.lineTo(cx + Math.cos(an - 2.5) * s * 0.26, cy + Math.sin(an - 2.5) * s * 0.26); f.closePath(); f.fill(); }
+    }
+  }
   function prerenderFloor() {
     floorPpm = ppm;
+    W = Sim.W; H = Sim.H; FLAG = Sim.FLAG;
+    if (!curFloor || mapRef !== Sim.map) { mapRef = Sim.map; mapVer = mapRef.version; curFloor = floorRectOf(mapRef, FLAG.x, FLAG.y); }
+    const fr = curFloor;
     floorCv = document.createElement("canvas");
-    floorCv.width = Math.ceil(W * ppm); floorCv.height = Math.ceil(H * ppm);
+    floorCv.width = Math.ceil(fr.w * ppm); floorCv.height = Math.ceil(fr.h * ppm);
     const f = floorCv.getContext("2d");
-    let seed = 7;
+    let seed = 7 + (fr.index || 0) * 131;
     const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const DOORS = { L: 1, M: 1, x: 1 };      // 扉・窓の下は床（開いたとき・窓越しに床が見える）
+    for (let y = fr.oy; y < fr.oy + fr.h; y++) for (let x = fr.ox; x < fr.ox + fr.w; x++) {
       const c = Sim.grid[y][x];
-      const px = x * ppm, py = y * ppm;
-      if (Sim.SOLID[c]) { f.fillStyle = C.solidBase; f.fillRect(px, py, ppm + 1, ppm + 1); continue; }
-      let base = C.ground;
-      if (c === "b") base = C.b; else if (c === "s") base = C.s; else if (c === "w") base = C.w; else if (c === "~") base = C.sand;
-      else if (c === "B") base = C.B; else if (c === "O") base = C.O; else if ((x + y) % 2) base = C.ground2;
-      f.fillStyle = base; f.fillRect(px, py, ppm + 1, ppm + 1);
-      if (c === "b") { f.fillStyle = C.bLine; for (let i = 0; i < 3; i++) f.fillRect(px + ppm * (0.15 + i * 0.33), py, Math.max(1, ppm * 0.09), ppm + 1); }
-      else if (c === "s") { f.fillStyle = C.sDot; for (let i = 0; i < 4; i++) { const r = ppm * 0.09; f.beginPath(); f.arc(px + ppm * (0.22 + (i % 2) * 0.5) + (rnd() - 0.5) * ppm * 0.15, py + ppm * (0.25 + ((i / 2) | 0) * 0.5), r, 0, 7); f.fill(); } }
-      else if (c === "w") { f.fillStyle = C.wLine; for (let i = 0; i < 3; i++) f.fillRect(px, py + ppm * (0.18 + i * 0.32), ppm + 1, Math.max(1, ppm * 0.07)); }
-      else if (c === "~") { f.fillStyle = C.sandDot; for (let i = 0; i < 5; i++) f.fillRect(px + rnd() * ppm, py + rnd() * ppm, 1.5, 1.5); }
-      else if (c === "." && rnd() < 0.25) { f.fillStyle = "rgba(255,255,255,0.03)"; f.fillRect(px + rnd() * ppm, py + rnd() * ppm, 2, 2); }
+      const px = (x - fr.ox) * ppm, py = (y - fr.oy) * ppm;
+      if (Sim.SOLID[c] && !DOORS[c]) { f.fillStyle = C.solidBase; f.fillRect(px, py, ppm + 1, ppm + 1); continue; }
+      groundCell(f, DOORS[c] || (c === "~" && isCastle()) ? "." : c, x, y, px, py, rnd);
+      markCell(f, c, x, y, px, py);
     }
-    // 旗の取得範囲（半径1m）の真鍮の輪
-    f.strokeStyle = C.brass; f.lineWidth = Math.max(1.5, ppm * 0.08);
-    f.beginPath(); f.arc(FLAG.x * ppm, FLAG.y * ppm, R.flagRadius * ppm, 0, 7); f.stroke();
-    f.strokeStyle = "rgba(199,165,91,0.25)"; f.setLineDash([4, 6]);
-    f.beginPath(); f.arc(FLAG.x * ppm, FLAG.y * ppm, R.flagNoCamo * ppm, 0, 7); f.stroke(); f.setLineDash([]);
-    prerenderMini();
+    // 旗の取得範囲の輪は、固定マップだけ床に描く（城は旗が見えたときに毎フレーム描く）
+    if (!isCastle()) {
+      f.strokeStyle = C.brass; f.lineWidth = Math.max(1.5, ppm * 0.08);
+      f.beginPath(); f.arc((FLAG.x - fr.ox) * ppm, (FLAG.y - fr.oy) * ppm, R.flagRadius * ppm, 0, 7); f.stroke();
+      f.strokeStyle = "rgba(199,165,91,0.25)"; f.setLineDash([4, 6]);
+      f.beginPath(); f.arc((FLAG.x - fr.ox) * ppm, (FLAG.y - fr.oy) * ppm, R.flagNoCamo * ppm, 0, 7); f.stroke(); f.setLineDash([]);
+    }
   }
-  function prerenderMini() {
-    miniCv = document.createElement("canvas");
-    const s = 3; miniCv.width = W * s; miniCv.height = H * s;
-    const m = miniCv.getContext("2d");
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  // ミニマップ用の小さな階の絵（階ごとにキャッシュ）
+  const miniCache = new Map();
+  function miniFor(fr) {
+    const key = fr.id + ":" + (mapRef ? mapRef.version : 0);
+    if (miniCache.has(key)) return miniCache.get(key);
+    const cvs = document.createElement("canvas");
+    const s = 3; cvs.width = fr.w * s; cvs.height = fr.h * s;
+    const m = cvs.getContext("2d");
+    for (let y = fr.oy; y < fr.oy + fr.h; y++) for (let x = fr.ox; x < fr.ox + fr.w; x++) {
       const c = Sim.grid[y][x];
       let col = "#3a4653";
-      if (c === ".") col = "#6c7784"; else if (c === "b") col = "#5c8a6b"; else if (c === "s") col = "#8a9199"; else if (c === "w") col = "#8a6e52";
-      else if (c === "~") col = "#c9b17d"; else if (c === "B") col = "#3C83BA"; else if (c === "O") col = "#D87932"; else if (c === "t") col = "#2d4a38"; else if (c === "r") col = "#4a5159";
-      m.fillStyle = col; m.fillRect(x * s, y * s, s, s);
+      if (c === "." || c === "m" || c === "S" || c === "n" || c === "l" || c === "f" || c === "p") col = "#6c7784"; else if (c === "b") col = "#5c8a6b"; else if (c === "s") col = "#8a9199"; else if (c === "w") col = "#8a6e52";
+      else if (c === "~") col = isCastle() ? "#6c7784" : "#c9b17d"; else if (c === "B") col = "#3C83BA"; else if (c === "O") col = "#D87932"; else if (c === "t") col = "#2d4a38"; else if (c === "r") col = "#4a5159";
+      else if (c === "=" || c === "c") col = "#4f86a8"; else if (c === "q" || c === "y") col = "#8a7458"; else if (c === "u") col = "#4d4a44"; else if (c === "H") col = "#c8452f";
+      else if (c === "^") col = "#f2e6c4"; else if (c === "v" || c === "z") col = "#9fd3ff"; else if (c === "L") col = "#b08a3a"; else if (c === "M") col = "#6a5a44"; else if (c === "x") col = "#56626e";
+      m.fillStyle = col; m.fillRect((x - fr.ox) * s, (y - fr.oy) * s, s, s);
     }
+    miniCache.set(key, cvs);
+    if (miniCache.size > 24) miniCache.delete(miniCache.keys().next().value);
+    return cvs;
   }
+  function prerenderMini() { if (curFloor) miniFor(curFloor); }
 
   // ---------- 座標 ----------
   const sx = x => (x - cam.x) * ppm + Wpx / 2;
   const sy = y => (y - cam.y) * ppm + Hpx / 2;
   function setCamera(x, y) {
     const halfW = Wpx / 2 / ppm, halfH = Hpx / 2 / ppm;
-    cam.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, x));
-    cam.y = halfH * 2 >= H ? H / 2 : Math.max(halfH, Math.min(H - halfH, y));
+    const fr = curFloor || { ox: 0, oy: 0, w: W, h: H };
+    cam.x = halfW * 2 >= fr.w ? fr.ox + fr.w / 2 : Math.max(fr.ox + halfW, Math.min(fr.ox + fr.w - halfW, x));
+    // 上端は2マスぶん余白を許す（一番上の部屋でも頭・名前が切れない）
+    cam.y = halfH * 2 >= fr.h + 2 ? fr.oy + fr.h / 2 - 1 : Math.max(fr.oy - 2 + halfH, Math.min(fr.oy + fr.h - halfH, y));
   }
   const lerp = (a, b, k) => a + (b - a) * k;
 
@@ -117,7 +231,7 @@ const Render = (() => {
   const teamCol = (team, light) => { const c = TEAM[team]; return c ? (light ? c.light : c.color) : "#cfd6dd"; };
   const CHANNEL_LABEL = { hawk_eye: "俯瞰", snipe: "狙い", tempo: "舞", parry: "構え", counter_stance: "構え", dash: "閃光", smash: "振り", zone_null_setup: "封印", leap: "雷" };
   // 効果が見えるか（味方の効果は常に・敵の効果は視界内で射線が通るとき）
-  const effVisible = (viewer, e) => e.team === viewer.team || (Math.hypot(viewer.x - e.x, viewer.y - e.y) <= R.viewRange && Sim.lineClear(viewer.x, viewer.y, e.x, e.y));
+  const effVisible = (viewer, e) => e.team === viewer.team || (Sim.dist(viewer, e) <= (Sim.viewRangeOf ? Sim.viewRangeOf(viewer) : R.viewRange) && Sim.lineClear(viewer.x, viewer.y, e.x, e.y));
   // 設置物の初期寿命（予告円の縮みに使う。id ごとに最初に見た life を覚える）
   const objMax = new Map();
   function objLifeK(o) {
@@ -377,6 +491,23 @@ const Render = (() => {
       ctx.fillStyle = C.rockLight; ctx.beginPath(); ctx.ellipse(px + ppm * 0.38, py + ppm * 0.2, ppm * 0.18, ppm * 0.12, -0.5, 0, 7); ctx.fill();
       return;
     }
+    if (c === "x") {          // 窓（通れないが見通せる）：低い腰壁と格子
+      ctx.fillStyle = C.wallFront; ctx.fillRect(px, py + ppm * 0.45, ppm + 0.5, ppm * 0.55);
+      ctx.fillStyle = C.wallTopEdge; ctx.fillRect(px, py + ppm * 0.4, ppm + 0.5, ppm * 0.1);
+      ctx.strokeStyle = "#b9a888"; ctx.lineWidth = Math.max(1, ppm * 0.05);
+      for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(px + ppm * i / 4, py - hgt * 0.4); ctx.lineTo(px + ppm * i / 4, py + ppm * 0.4); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(px, py - hgt * 0.4); ctx.lineTo(px + ppm, py - hgt * 0.4); ctx.stroke();
+      return;
+    }
+    if (c === "L" || c === "M") {   // 鍵の扉／閉じた仕掛け扉（回転壁・水門）
+      const mt = mapRef && mapRef.castle ? mapRef.castle.type : "";
+      ctx.fillStyle = c === "L" ? C.door : (mt === "water" ? "#3c5566" : "#5b4a36"); ctx.fillRect(px, py - hgt, ppm + 0.5, ppm + hgt + 0.5);
+      ctx.fillStyle = c === "L" ? C.doorDark : "rgba(0,0,0,0.3)";
+      for (let i = 1; i < 3; i++) ctx.fillRect(px + ppm * i / 3 - 1, py - hgt, 2, ppm + hgt);
+      if (c === "L") { ctx.fillStyle = "#ffd84a"; ctx.beginPath(); ctx.arc(px + ppm / 2, py + ppm * 0.1, ppm * 0.12, 0, 7); ctx.fill(); ctx.fillRect(px + ppm / 2 - ppm * 0.04, py + ppm * 0.1, ppm * 0.08, ppm * 0.2); }
+      else { ctx.strokeStyle = "#c9a67a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px + ppm / 2, py + ppm * 0.1, ppm * 0.2, 0, 7); ctx.stroke(); }
+      return;
+    }
     // 城壁
     if (frontVisible) { ctx.fillStyle = C.wallFront; ctx.fillRect(px, py + ppm - hgt, ppm + 0.5, hgt + 0.5); }
     ctx.fillStyle = C.wallTop; ctx.fillRect(px, py - hgt, ppm + 0.5, ppm + 0.5);
@@ -633,6 +764,7 @@ const Render = (() => {
         if (!effVisible(viewer, e)) continue;
         ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = "#b48cff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, ppm * (0.4 + k * 1.0), 0, 7); ctx.stroke(); ctx.restore();
       } else if (e.type === "levelup") {
+        if (e.team !== viewer.team) continue;
         ctx.save(); ctx.globalAlpha = a * 0.8; ctx.strokeStyle = teamCol(e.team, true); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, ppm * (0.5 + k * 4), 0, 7); ctx.stroke(); ctx.restore();
       } else if (e.type === "ult") {
         if (!effVisible(viewer, e)) continue;
@@ -672,6 +804,7 @@ const Render = (() => {
     }
     for (const p of g.players) {
       if (!p.pulse || p.returning > 0 || p.ghost) continue;
+      if (p.team !== viewer.team && Sim.pulseShownTo && !Sim.pulseShownTo(g, viewer)) continue;
       const x = sx(p.x), y = sy(p.y);
       ctx.save(); ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 2;
       for (let i = 0; i < 3; i++) { const k = ((t * 0.7 + i / 3) % 1); ctx.globalAlpha = 1 - k; ctx.beginPath(); ctx.ellipse(x, y, ppm * (0.3 + k * 1.6), ppm * (0.12 + k * 0.7), 0, 0, 7); ctx.stroke(); }
@@ -682,6 +815,7 @@ const Render = (() => {
     for (const e of g.effects) {
       const a = e.life / e.maxLife, k = 1 - a;
       const x = sx(e.x), y = sy(e.y);
+      if (CASTLE_FX[e.type]) { if (e.type === "mech" || e.type === "push_warn" || e.team === viewer.team || effVisible(viewer, e)) drawCastleEffect(g, viewer, e); continue; }
       if (e.type === "found") {
         ctx.save(); ctx.strokeStyle = C.yellow; ctx.lineWidth = 3; ctx.globalAlpha = a;
         ctx.beginPath(); ctx.arc(x, y - ppm * 0.8, ppm * (0.5 + k * 1.2), 0, 7); ctx.stroke(); ctx.restore();
@@ -710,6 +844,7 @@ const Render = (() => {
         ctx.restore();
         drawLabel(x, y - ppm * 2.3 - k * ppm * 0.6, "復帰", "#8ff2a4");
       } else if (e.type === "levelup") {
+        if (e.team !== viewer.team) continue;
         drawLabel(x, y - ppm * 2.2 - k * ppm * 0.8, "Lv." + e.level, teamCol(e.team, true), ppm * 0.8);
       } else if (e.type === "ult") {
         if (!effVisible(viewer, e)) continue;
@@ -816,6 +951,15 @@ const Render = (() => {
       }
       return;
     }
+    // 幻灯（月霧城の罠）の偽の足音も、本物と同じ見た目で出す
+    for (const o of objsOf(g)) {
+      if (o.kind !== "phantom" || o.dead || !Sim.phantomAudible || !Sim.phantomAudible(viewer, o)) continue;
+      const an = Math.atan2(o.y - viewer.y, o.x - viewer.x), d = Sim.dist(viewer, o);
+      const rr = ppm * 1.7, cx = sx(viewer.x), cy = sy(viewer.y) - ppm * 0.6;
+      ctx.save(); ctx.globalAlpha = Math.max(0.35, 1 - d / 9); ctx.strokeStyle = "#f2e6c4"; ctx.lineWidth = 2.5;
+      for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.arc(cx, cy, rr + i * ppm * 0.25, an - 0.35, an + 0.35); ctx.stroke(); }
+      ctx.restore();
+    }
     for (const q of g.players) {
       if (q.ghost || q.pulseOnly) continue;
       if (q.team === viewer.team || !Sim.audible(viewer, q)) continue;
@@ -835,7 +979,7 @@ const Render = (() => {
     d.globalCompositeOperation = "source-over";
     d.clearRect(0, 0, Wpx, Hpx);
     d.fillStyle = "rgba(6,10,16,0.55)"; d.fillRect(0, 0, Wpx, Hpx);
-    const N = 100, maxR = R.viewRange, ox = viewer.x, oy = viewer.y;
+    const N = 100, maxR = Sim.viewRangeOf ? Sim.viewRangeOf(viewer) : R.viewRange, ox = viewer.x, oy = viewer.y;
     d.globalCompositeOperation = "destination-out";
     const grad = d.createRadialGradient(sx(ox), sy(oy), ppm * 2, sx(ox), sy(oy), maxR * ppm);
     grad.addColorStop(0, "rgba(0,0,0,1)"); grad.addColorStop(0.75, "rgba(0,0,0,1)"); grad.addColorStop(1, "rgba(0,0,0,0)");
@@ -844,7 +988,7 @@ const Render = (() => {
     for (let i = 0; i <= N; i++) {
       const an = (i / N) * Math.PI * 2, cx = Math.cos(an), cy = Math.sin(an);
       let r = 0;
-      for (; r < maxR; r += 0.25) { if (Sim.SOLID[Sim.cellAt(ox + cx * r, oy + cy * r)]) { r += 0.8; break; } }
+      for (; r < maxR; r += 0.25) { if ((Sim.LOSBLOCK || Sim.SOLID)[Sim.cellAt(ox + cx * r, oy + cy * r)]) { r += 0.8; break; } }
       const px = sx(ox + cx * r), py = sy(oy + cy * r);
       if (i === 0) d.moveTo(px, py); else d.lineTo(px, py);
     }
@@ -853,36 +997,167 @@ const Render = (() => {
     ctx.drawImage(darkCv, 0, 0, Wpx, Hpx);
   }
 
+  // ---------- 城：拾える物・旗の台座・霧の庭 ----------
+  // 旗は「チームが見つけた」か「いま見えている」ときだけ描く（ふつう・てごわいは旗の位置が伏せてある）
+  function flagShown(g, viewer) {
+    if (!isCastle()) return true;
+    if (g.phase === "finished") return true;
+    if (intelOf(g, viewer.team).known) return true;
+    return sameFloor(viewer, FLAG) && Sim.dist(viewer, FLAG) <= Sim.viewRangeOf(viewer) && Sim.lineClear(viewer.x, viewer.y, FLAG.x, FLAG.y);
+  }
+  function drawFlagRing() {
+    const x = sx(FLAG.x), y = sy(FLAG.y);
+    ctx.save();
+    // 擬態できない砂の輪（半径3m）
+    ctx.fillStyle = "rgba(106,93,70,0.55)"; ctx.beginPath(); ctx.arc(x, y, R.flagNoCamo * ppm, 0, 7); ctx.fill();
+    ctx.strokeStyle = C.brass; ctx.lineWidth = Math.max(1.5, ppm * 0.08);
+    ctx.beginPath(); ctx.arc(x, y, R.flagRadius * ppm, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "rgba(199,165,91,0.25)"; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.arc(x, y, R.flagNoCamo * ppm, 0, 7); ctx.stroke(); ctx.restore();
+  }
+  // 旗の台座（てごわいの候補の間には、空の台座と本物の台座が同じ形で置いてある）
+  function drawPedestal(x, y, cand) {
+    const px = sx(x), py = sy(y);
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.ellipse(px, py, ppm * 0.42, ppm * 0.16, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#6b5a3a"; ctx.fillRect(px - ppm * 0.34, py - ppm * 0.2, ppm * 0.68, ppm * 0.2);
+    ctx.fillStyle = "#8a7550"; ctx.fillRect(px - ppm * 0.34, py - ppm * 0.24, ppm * 0.68, ppm * 0.06);
+    if (cand) drawLabel(px, py - ppm * 0.7, "？", "#f2d27c", ppm * 0.5);
+    ctx.restore();
+  }
+  function drawKey(it) {
+    const x = sx(it.x), y = sy(it.y) - ppm * 0.3 - (reduceMotion() ? 0 : Math.sin(t * 3 + it.id) * ppm * 0.06);
+    ctx.save();
+    ctx.fillStyle = "rgba(255,216,74,0.18)"; ctx.beginPath(); ctx.arc(x, y, ppm * 0.45, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = Math.max(2, ppm * 0.08);
+    ctx.beginPath(); ctx.arc(x - ppm * 0.14, y, ppm * 0.12, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - ppm * 0.02, y); ctx.lineTo(x + ppm * 0.26, y); ctx.moveTo(x + ppm * 0.18, y); ctx.lineTo(x + ppm * 0.18, y + ppm * 0.1); ctx.moveTo(x + ppm * 0.26, y); ctx.lineTo(x + ppm * 0.26, y + ppm * 0.1); ctx.stroke();
+    ctx.restore();
+  }
+  function drawEmblem(it, seenByTeam) {
+    const x = sx(it.x), y = sy(it.y);
+    ctx.save(); ctx.globalAlpha = seenByTeam ? 0.45 : 1;
+    ctx.fillStyle = "#e8d9b0"; ctx.fillRect(x - 1.5, y - ppm * 1.2, 3, ppm * 1.2);
+    ctx.fillStyle = "#3a5a8a"; ctx.fillRect(x + 1.5, y - ppm * 1.15, ppm * 0.5, ppm * 0.62);
+    ctx.fillStyle = "#f2d27c"; ctx.beginPath(); ctx.moveTo(x + 1.5 + ppm * 0.25, y - ppm * 1.02); ctx.lineTo(x + 1.5 + ppm * 0.4, y - ppm * 0.84); ctx.lineTo(x + 1.5 + ppm * 0.25, y - ppm * 0.66); ctx.lineTo(x + 1.5 + ppm * 0.1, y - ppm * 0.84); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    if (!seenByTeam) drawLabel(x + ppm * 0.2, y - ppm * 1.45, "旗印", "#f2d27c", ppm * 0.3);
+  }
+  // 霧の庭（月霧城）：ずっとある白い霧。中の人は外から見えにくい（判定は sim の zone_fog と同じ）
+  function drawStaticFog(g, viewer) {
+    const fogs = (mapRef && mapRef.fogObjs) || [];
+    for (const o of fogs) {
+      if (!sameFloor(viewer, o)) continue;
+      const x = sx(o.x), y = sy(o.y), r = (o.r || 2) * ppm;
+      if (x < -r || y < -r || x > Wpx + r || y > Hpx + r) continue;
+      const inside = Math.hypot(viewer.x - o.x, viewer.y - o.y) <= (o.r || 2);
+      ctx.save(); ctx.globalAlpha = inside ? 0.45 : 0.85;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, "rgba(225,232,240,0.62)"); gr.addColorStop(0.7, "rgba(210,220,232,0.45)"); gr.addColorStop(1, "rgba(210,220,232,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      if (!reduceMotion()) { ctx.fillStyle = "rgba(240,244,250,0.16)"; for (let i = 0; i < 5; i++) { const an = i * 1.26 + t * 0.2, rr = r * (0.25 + 0.4 * pseudo(i, o.id)); ctx.beginPath(); ctx.arc(x + Math.cos(an) * rr, y + Math.sin(an) * rr * 0.7, r * 0.3, 0, 7); ctx.fill(); } }
+      ctx.restore();
+    }
+  }
+  // 城の効果（上下移動・罠・鍵・仕掛け）
+  function drawCastleEffect(g, viewer, e) {
+    const a = e.life / e.maxLife, k = 1 - a, x = sx(e.x), y = sy(e.y);
+    if (e.type === "portal") {
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = "#dfe8ef"; ctx.lineWidth = 2;
+      for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.ellipse(x, y, ppm * (0.4 + k * 0.9 + i * 0.3), ppm * (0.16 + k * 0.4 + i * 0.12), 0, 0, 7); ctx.stroke(); }
+      ctx.restore();
+    } else if (e.type === "shove") {
+      const tx = sx(e.tx), ty = sy(e.ty);
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = "rgba(200,235,255,0.9)"; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke(); ctx.restore();
+    } else if (e.type === "unlock") {
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, ppm * (0.5 + k * 1.4), 0, 7); ctx.stroke(); ctx.restore();
+      drawLabel(x, y - ppm * 1.2 - k * ppm * 0.5, "開いた", "#ffd84a", ppm * 0.45);
+    } else if (e.type === "burn") {
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = "#ff9a3c";
+      for (let i = 0; i < 6; i++) { const an = i * 1.05 + k * 2; ctx.beginPath(); ctx.arc(x + Math.cos(an) * ppm * 0.4, y - ppm * 0.6 - k * ppm + Math.sin(an) * ppm * 0.2, ppm * 0.1, 0, 7); ctx.fill(); }
+      ctx.restore();
+      if (e.dmg) drawLabel(x, y - ppm * 2.2 - k * ppm, "-" + e.dmg + " 火鉢", e.target === viewer.id ? "#ff6a5a" : "#ffb090", ppm * 0.5);
+    } else if (e.type === "naruko") {
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = "#e8c65a"; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x, y - ppm * 0.4, ppm * (0.4 + k * 1.2 + i * 0.3), -2.4, -0.7); ctx.stroke(); }
+      ctx.restore(); drawLabel(x, y - ppm * 1.6 - k * ppm * 0.4, "カラン", "#e8c65a", ppm * 0.42);
+    } else if (e.type === "lantern") {
+      ctx.save(); ctx.globalAlpha = a * 0.8; const gr = ctx.createRadialGradient(x, y, 0, x, y, ppm * 1.4); gr.addColorStop(0, "rgba(255,220,150,0.6)"); gr.addColorStop(1, "rgba(255,220,150,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, ppm * 1.4, 0, 7); ctx.fill(); ctx.restore();
+    } else if (e.type === "shrine") {
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = "#8ff2a4";
+      for (let i = 0; i < 6; i++) { const an = i * 1.05 + 0.3; ctx.beginPath(); ctx.arc(x + Math.cos(an) * ppm * 0.45, y - ppm * 0.5 - k * ppm * 1.2 + Math.sin(an) * ppm * 0.15, ppm * 0.07, 0, 7); ctx.fill(); }
+      ctx.restore(); if (e.heal) drawLabel(x, y - ppm * 2.2 - k * ppm, "+" + e.heal, "#8ff2a4", ppm * 0.55);
+    } else if (e.type === "key") {
+      drawLabel(x, y - ppm * 1.2 - k * ppm, e.team === viewer.team ? "鍵を拾った" : "鍵", "#ffd84a", ppm * 0.45);
+    } else if (e.type === "mech") {
+      ctx.save(); ctx.globalAlpha = a * 0.8; ctx.strokeStyle = "#c9a67a"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(x, y, ppm * (0.6 + k * 0.8), 0, 7); ctx.stroke(); ctx.restore();
+    } else if (e.type === "push_warn") {
+      ctx.save(); ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(t * 12)); ctx.fillStyle = "#ffd84a";
+      drawLabel(x, y - ppm * 1.2, "押し壁が動く", "#ffd84a", ppm * 0.42); ctx.restore();
+    } else if (e.type === "flagfound" && e.team === viewer.team) {
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.brass; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y - ppm, ppm * (0.6 + k * 2.4), 0, 7); ctx.stroke(); ctx.restore();
+    }
+  }
+  const CASTLE_FX = { portal: 1, shove: 1, unlock: 1, burn: 1, naruko: 1, lantern: 1, shrine: 1, key: 1, mech: 1, push_warn: 1, flagfound: 1 };
+
   // ---------- メイン ----------
   function draw(g, viewer, alpha, dt) {
     if (!cv) return;
     t += dt || 0.016;
+    syncMap(g, viewer);
+    const fr = curFloor, vfi = isCastle() ? Sim.floorAt(viewer.x, viewer.y) : 0;
+    const onFloor = o => !isCastle() || Sim.floorAt(o.x, o.y) === vfi;
     const vx = lerp(viewer.px, viewer.x, alpha), vy = lerp(viewer.py, viewer.y, alpha);
-    setCamera(vx, vy);
+    // 階を移った直後は補間しない（別の階の座標から線を引かない）
+    setCamera(onFloor({ x: vx, y: vy }) ? vx : viewer.x, onFloor({ x: vx, y: vy }) ? vy : viewer.y);
     ctx.fillStyle = C.solidBase; ctx.fillRect(0, 0, Wpx, Hpx);
-    // 床
-    const fx = (cam.x - Wpx / 2 / ppm) * ppm, fy = (cam.y - Hpx / 2 / ppm) * ppm;
-    ctx.drawImage(floorCv, fx, fy, Wpx, Hpx, 0, 0, Wpx, Hpx);
+    // いまの階の外は描かない
+    ctx.save();
+    const clipTop = sy(fr.oy) - ppm * 2;
+    ctx.beginPath(); ctx.rect(sx(fr.ox), clipTop, fr.w * ppm, sy(fr.oy + fr.h) - clipTop); ctx.clip();
+    // 床（いまの階だけを事前に描いた絵）
+    ctx.drawImage(floorCv, sx(fr.ox), sy(fr.oy), fr.w * ppm, fr.h * ppm);
     drawGroundObjects(g, viewer);      // 設置物の地面層（水鏡・封印・描景・棘道・予告円…）
     drawGroundEffects(g, viewer);
+    const showFlag = flagShown(g, viewer) && onFloor(FLAG);
+    if (showFlag && isCastle()) drawFlagRing();
     // 描画対象（壁・キャラ・旗・立った設置物）をy順に
-    const x0 = Math.max(0, Math.floor(cam.x - Wpx / 2 / ppm) - 1), x1 = Math.min(W - 1, Math.ceil(cam.x + Wpx / 2 / ppm) + 1);
-    const y0 = Math.max(0, Math.floor(cam.y - Hpx / 2 / ppm) - 2), y1 = Math.min(H - 1, Math.ceil(cam.y + Hpx / 2 / ppm) + 1);
+    const x0 = Math.max(fr.ox, Math.floor(cam.x - Wpx / 2 / ppm) - 1), x1 = Math.min(fr.ox + fr.w - 1, Math.ceil(cam.x + Wpx / 2 / ppm) + 1);
+    const y0 = Math.max(fr.oy, Math.floor(cam.y - Hpx / 2 / ppm) - 2), y1 = Math.min(fr.oy + fr.h - 1, Math.ceil(cam.y + Hpx / 2 / ppm) + 1);
     const ents = [];
     for (const p of g.players) {
-      if (p.returning > 0 || p.ghost || p.pulseOnly) continue;
+      if (p.returning > 0 || p.ghost || p.pulseOnly || p.x == null || !onFloor(p)) continue;
       let view = "seen";
       if (p.team !== viewer.team) { view = p.cloth ? "cloth" : Sim.enemyView(viewer, p); if (view === "none") continue; }
       const ix = lerp(p.px, p.x, alpha), iy = lerp(p.py, p.y, alpha);
       ents.push({ y: iy, f: () => drawCharacter(g, p, viewer, view, ix, iy) });
     }
     for (const o of objsOf(g)) {
-      if (o.dead || !objVisible(viewer, o)) continue;
+      if (o.dead || o.kind === "phantom" || !objVisible(viewer, o)) continue;
       if (o.kind === "wall" && !o.pending) ents.push({ y: Math.max(o.ay, o.by), f: () => drawWallObject(o) });
       else if (o.kind === "decoy_run" || o.kind === "decoy_static" || o.kind === "echo_clone") ents.push({ y: o.y, f: () => drawDecoy(g, o, viewer) });
       else if (o.kind === "fox_fire") ents.push({ y: o.y, f: () => drawFoxFire(o) });
     }
-    ents.push({ y: FLAG.y, f: () => drawFlag(g) });
+    if (isCastle()) {
+      const I = intelOf(g, viewer.team);
+      // 旗の台座（本物＋てごわいの偽の候補）
+      for (const r of mapRef.rooms) {
+        if (mapRef.castle.flagInfo !== "candidates") break;
+        if (!(r.flag || r.candidate) || !onFloor({ x: r.cx, y: r.cy })) continue;
+        if (r.flag && showFlag) continue;
+        const cand = !I.known && I.candidates.includes(r.id) && mapRef.castle.flagInfo !== "full";
+        ents.push({ y: r.cy, f: () => drawPedestal(r.cx, r.cy, cand) });
+      }
+      const seenEmb = I.emblems || [];
+      for (const it of mapRef.items) {
+        if (it.taken || !onFloor(it)) continue;
+        if (it.kind === "key") ents.push({ y: it.y, f: () => drawKey(it) });
+        else if (it.kind === "emblem") ents.push({ y: it.y, f: () => drawEmblem(it, seenEmb.includes(it.id)) });
+      }
+    }
+    if (showFlag) ents.push({ y: FLAG.y, f: () => drawFlag(g) });
     ents.sort((a, b) => a.y - b.y);
     let ei = 0;
     for (let y = y0; y <= y1; y++) {
@@ -891,73 +1166,145 @@ const Render = (() => {
     }
     while (ei < ents.length) { ents[ei].f(); ei++; }
     drawShots(g, viewer);
+    drawStaticFog(g, viewer);          // 霧の庭（月霧城）
     drawTopZones(g, viewer);           // 紫煙・漆黒はキャラの上
     drawDarkness(viewer);
     drawTopEffects(g, viewer);
+    ctx.restore();
     drawFootMarks(g, viewer);
   }
 
-  // ---------- ミニマップ ----------
+  // ---------- ミニマップ（いまの階） ----------
   function drawMinimap(mcv, g, viewer) {
-    if (!miniCv) return;
+    syncMap(g, viewer);
+    const fr = curFloor; if (!fr) return;
     const m = mcv.getContext("2d");
-    const mw = mcv.width, mh = mcv.height, k = mw / W;
+    const mw = mcv.width, mh = mcv.height;
+    const k = Math.min(mw / fr.w, mh / fr.h), ox = (mw - fr.w * k) / 2, oy = (mh - fr.h * k) / 2;
+    const X = x => ox + (x - fr.ox) * k, Y = y => oy + (y - fr.oy) * k;
     m.clearRect(0, 0, mw, mh);
-    m.drawImage(miniCv, 0, 0, mw, mh);
-    // 旗
-    m.fillStyle = C.brass; m.beginPath(); m.arc(FLAG.x * k, FLAG.y * k, 3.5, 0, 7); m.fill();
+    m.drawImage(miniFor(fr), ox, oy, fr.w * k, fr.h * k);
+    const castle = isCastle(), I = intelOf(g, viewer.team);
+    const onFloor = o => !castle || Sim.floorAt(o.x, o.y) === fr.index;
+    // 旗（分かっていて、この階にあるとき）／候補の部屋
+    if (flagShown(g, viewer) && onFloor(FLAG)) { m.fillStyle = C.brass; m.beginPath(); m.arc(X(FLAG.x), Y(FLAG.y), 3.5, 0, 7); m.fill(); }
+    else if (castle && !I.known) {
+      for (const rid of I.candidates) { const r = mapRef.rooms[rid]; if (!r || !onFloor({ x: r.cx, y: r.cy })) continue; m.strokeStyle = "#f2d27c"; m.lineWidth = 1.2; m.setLineDash([2, 2]); m.strokeRect(X(r.x0), Y(r.y0), (r.x1 - r.x0 + 1) * k, (r.y1 - r.y0 + 1) * k); m.setLineDash([]); }
+    }
     for (const p of g.players) {
-      if (p.returning > 0) continue;
-      const x = p.x * k, y = p.y * k;
+      if (p.returning > 0 || p.x == null || !onFloor(p)) continue;
+      const x = X(p.x), y = Y(p.y);
       if (p.team === viewer.team) {
         m.fillStyle = p === viewer ? "#ffffff" : TEAM[p.team].light;
         m.beginPath(); m.arc(x, y, p === viewer ? 3.5 : 2.8, 0, 7); m.fill();
         if (p === viewer) { m.strokeStyle = "#15222B"; m.lineWidth = 1; m.stroke(); }
       } else if (p.reveal > 0) {
         m.fillStyle = C.yellow; m.beginPath(); m.arc(x, y, 3, 0, 7); m.fill();
-      } else if (p.lastSeen) {
-        m.strokeStyle = C.yellow; m.lineWidth = 1; m.beginPath(); m.arc(p.lastSeen.x * k, p.lastSeen.y * k, 3, 0, 7); m.stroke();
+      } else if (p.lastSeen && onFloor(p.lastSeen)) {
+        m.strokeStyle = C.yellow; m.lineWidth = 1; m.beginPath(); m.arc(X(p.lastSeen.x), Y(p.lastSeen.y), 3, 0, 7); m.stroke();
       }
-      if (p.pulse) { m.strokeStyle = "#fff"; m.lineWidth = 1; m.beginPath(); m.arc(x, y, 5, 0, 7); m.stroke(); }
+      if (p.pulse && (p.team === viewer.team || !Sim.pulseShownTo || Sim.pulseShownTo(g, viewer))) { m.strokeStyle = "#fff"; m.lineWidth = 1; m.beginPath(); m.arc(x, y, 5, 0, 7); m.stroke(); }
     }
     // 白狐の足跡（track.mark）と鷹の目・白蛇が捉えた点（spotted）は味方だけに出す
     for (const o of objsOf(g)) {
-      if (o.dead || o.team !== viewer.team || o.kind !== "track" || !o.mark) continue;
-      const mx = o.mark.x * k, my = o.mark.y * k;
+      if (o.dead || o.team !== viewer.team || o.kind !== "track" || !o.mark || !onFloor(o.mark)) continue;
+      const mx = X(o.mark.x), my = Y(o.mark.y);
       m.fillStyle = TEAM[viewer.team].light;
       m.beginPath(); m.ellipse(mx - 1.6, my + 0.8, 1.3, 2, -0.3, 0, 7); m.fill();
       m.beginPath(); m.ellipse(mx + 1.6, my - 0.8, 1.3, 2, 0.3, 0, 7); m.fill();
       m.strokeStyle = TEAM[viewer.team].light; m.lineWidth = 1; m.setLineDash([2, 2]); m.beginPath(); m.arc(mx, my, 5, 0, 7); m.stroke(); m.setLineDash([]);
     }
     for (const e of g.effects) {
-      if (e.type !== "spotted" || e.team !== viewer.team) continue;
-      m.fillStyle = C.yellow; m.beginPath(); m.arc(e.x * k, e.y * k, 2.5, 0, 7); m.fill();
+      if (e.type !== "spotted" || e.team !== viewer.team || !onFloor(e)) continue;
+      m.fillStyle = C.yellow; m.beginPath(); m.arc(X(e.x), Y(e.y), 2.5, 0, 7); m.fill();
       m.strokeStyle = "#15222B"; m.lineWidth = 1; m.stroke();
     }
-  }
-  // 作戦画面用：ルートを重ねた地図
-  function drawBriefingMap(mcv, team, assignments) {
-    if (!miniCv) prerenderMini();
-    const m = mcv.getContext("2d");
-    const mw = mcv.width, mh = mcv.height, k = mw / W;
-    m.clearRect(0, 0, mw, mh);
-    m.drawImage(miniCv, 0, 0, mw, mh);
-    const colors = { north: "#7fd1a6", center: "#f2d27c", south: "#a9b8c9" };
-    for (const [routeId, rt] of Object.entries(D.MAP.routes)) {
-      const pts = [[team ? 60 : 4, 24], ...rt.pts.map(p => [team ? W - p[0] : p[0], p[1]]), [FLAG.x, FLAG.y]];
-      m.strokeStyle = colors[routeId]; m.lineWidth = 3; m.lineJoin = "round"; m.setLineDash([]);
-      m.beginPath(); pts.forEach(([x, y], i) => i ? m.lineTo(x * k, y * k) : m.moveTo(x * k, y * k)); m.stroke();
-      const lab = assignments && assignments[routeId];
-      if (lab) {
-        const mid = pts[Math.floor(pts.length / 2)];
-        m.font = "bold 12px 'Yu Gothic UI','Hiragino Sans',sans-serif"; m.textAlign = "center";
-        const tw = m.measureText(lab).width + 10;
-        m.fillStyle = "rgba(21,34,43,0.9)"; m.fillRect(mid[0] * k - tw / 2, mid[1] * k - 18, tw, 16);
-        m.fillStyle = colors[routeId]; m.fillText(lab, mid[0] * k, mid[1] * k - 6);
-      }
+    // 階の名前（城）
+    if (castle) {
+      const lab = floorLabel(fr.id) + (I.floorKnown ? (mapRef.flagFloor === fr.id ? " 🚩" : "｜旗" + floorLabel(mapRef.flagFloor)) : "｜旗？");
+      m.font = "bold 11px 'Yu Gothic UI','Hiragino Sans',sans-serif"; m.textAlign = "left"; m.textBaseline = "top";
+      const tw = m.measureText(lab).width + 8;
+      m.fillStyle = "rgba(13,18,25,0.85)"; m.fillRect(2, 2, tw, 15);
+      m.fillStyle = "#f2e6c4"; m.fillText(lab, 6, 4);
     }
-    m.fillStyle = C.brass; m.beginPath(); m.arc(FLAG.x * k, FLAG.y * k, 5, 0, 7); m.fill();
+  }
+  // 作戦画面用：ルートを重ねた地図（城は全階を並べる）
+  const ROUTE_COLORS = ["#7fd1a6", "#f2d27c", "#a9b8c9"];
+  function drawBriefingMap(mcv, team, assignments, g) {
+    if (g) syncMap(g, null);
+    const m = mcv.getContext("2d");
+    const mw = mcv.width, mh = mcv.height;
+    m.clearRect(0, 0, mw, mh);
+    if (!isCastle()) {
+      const fr = { id: "1F", ox: 0, oy: 0, w: W, h: H, index: 0 }, k = mw / W;
+      m.drawImage(miniFor(fr), 0, 0, mw, mh);
+      const colors = { north: "#7fd1a6", center: "#f2d27c", south: "#a9b8c9" };
+      for (const [routeId, rt] of Object.entries(D.MAP.routes)) {
+        const pts = [[team ? 60 : 4, 24], ...rt.pts.map(p => [team ? W - p[0] : p[0], p[1]]), [FLAG.x, FLAG.y]];
+        m.strokeStyle = colors[routeId]; m.lineWidth = 3; m.lineJoin = "round"; m.setLineDash([]);
+        m.beginPath(); pts.forEach(([x, y], i) => i ? m.lineTo(x * k, y * k) : m.moveTo(x * k, y * k)); m.stroke();
+        const lab = assignments && assignments[routeId];
+        if (lab) briefLabel(m, lab, pts[Math.floor(pts.length / 2)][0] * k, pts[Math.floor(pts.length / 2)][1] * k, colors[routeId]);
+      }
+      m.fillStyle = C.brass; m.beginPath(); m.arc(FLAG.x * k, FLAG.y * k, 5, 0, 7); m.fill();
+      return;
+    }
+    // 城：階を下から上へ、格子に並べる
+    const floors = mapRef.floors, n = floors.length;
+    const cols = n <= 3 ? 1 : 2, rows = Math.ceil(n / cols), pad = 4, headH = 14;
+    const cw = (mw - pad * (cols + 1)) / cols, ch = (mh - pad * (rows + 1)) / rows;
+    const I = intelOf(g, team);
+    const cell = {};
+    floors.forEach((fr, i) => {
+      const ri = rows - 1 - Math.floor(i / cols), ci = i % cols;      // 下の階ほど下に
+      const bx = pad + ci * (cw + pad), by = pad + ri * (ch + pad);
+      const k = Math.min(cw / fr.w, (ch - headH) / fr.h);
+      const ox = bx + (cw - fr.w * k) / 2, oy = by + headH + (ch - headH - fr.h * k) / 2;
+      cell[fr.id] = { fr, k, X: x => ox + (x - fr.ox) * k, Y: y => oy + (y - fr.oy) * k };
+      m.fillStyle = "rgba(13,18,25,0.6)"; m.fillRect(bx, by, cw, ch);
+      m.drawImage(miniFor(fr), ox, oy, fr.w * k, fr.h * k);
+      const flagHere = mapRef.flagFloor === fr.id && I.floorKnown;
+      m.font = "bold 11px 'Yu Gothic UI','Hiragino Sans',sans-serif"; m.textAlign = "left"; m.textBaseline = "top";
+      m.fillStyle = flagHere ? "#f2d27c" : "#cfd6dd";
+      m.fillText(floorLabel(fr.id) + "  " + ((typeof Castle !== "undefined" && Castle.FLOOR_TITLE[fr.id]) || "") + (flagHere ? "  🚩旗の階" : "") + (fr.id === "1F" ? "  ◎開始" : ""), bx + 4, by + 2);
+    });
+    const at = p => { const fi = Sim.floorAt(p.x, p.y); const fr = floors[fi === 255 ? 0 : fi]; return cell[fr.id]; };
+    // ルート（同じ階の点どうしだけを線で結ぶ。階段は丸印）
+    const routes = mapRef.routes[team] || [];
+    routes.forEach((rt, ri) => {
+      const col = ROUTE_COLORS[ri % ROUTE_COLORS.length];
+      const sp = mapRef.spawn[team][0];
+      let pts = [sp].concat(rt.pts);
+      if (I.known) pts.push(FLAG);
+      else {
+        const floorId = p => { const fi = Sim.floorAt(p.x, p.y); return floors[fi === 255 ? 0 : fi].id; };
+        const stop = mapRef.castle.flagInfo === "floor" ? (p => floorId(p) === mapRef.flagFloor) : (p => floorId(p) !== "1F");
+        const cut = pts.findIndex((p, i) => i > 0 && stop(p));
+        if (cut > 0) pts = pts.slice(0, cut + 1);
+      }
+      m.strokeStyle = col; m.lineWidth = 2.5; m.lineJoin = "round"; m.lineCap = "round";
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i], ca = at(a), cb = at(b);
+        if (ca !== cb) { m.fillStyle = col; m.beginPath(); m.arc(ca.X(a.x), ca.Y(a.y), 3, 0, 7); m.fill(); m.beginPath(); m.arc(cb.X(b.x), cb.Y(b.y), 3, 0, 7); m.fill(); continue; }
+        m.beginPath(); m.moveTo(ca.X(a.x), ca.Y(a.y)); m.lineTo(ca.X(b.x), ca.Y(b.y)); m.stroke();
+      }
+      const lab = assignments && assignments[ri];
+      if (lab) { const c1 = at(sp); briefLabel(m, lab, c1.X(sp.x) + (team ? -1 : 1) * 46, c1.Y(sp.y) + (ri - (routes.length - 1) / 2) * 17 + 5, col); }
+    });
+    // 旗・候補
+    if (I.known) { const c = at(FLAG); m.fillStyle = C.brass; m.beginPath(); m.arc(c.X(FLAG.x), c.Y(FLAG.y), 4.5, 0, 7); m.fill(); }
+    else for (const rid of I.candidates) {
+      const r = mapRef.rooms[rid]; if (!r) continue; const c = at({ x: r.cx, y: r.cy });
+      m.strokeStyle = "#f2d27c"; m.lineWidth = 1.5; m.setLineDash([3, 2]); m.strokeRect(c.X(r.x0), c.Y(r.y0), (r.x1 - r.x0 + 1) * c.k, (r.y1 - r.y0 + 1) * c.k); m.setLineDash([]);
+    }
+  }
+  function briefLabel(m, lab, x, y, col) {
+    m.font = "bold 12px 'Yu Gothic UI','Hiragino Sans',sans-serif"; m.textAlign = "center"; m.textBaseline = "alphabetic";
+    const tw = m.measureText(lab).width + 10;
+    x = Math.max(tw / 2 + 2, Math.min(m.canvas.width - tw / 2 - 2, x)); y = Math.max(16, y);
+    m.fillStyle = "rgba(21,34,43,0.9)"; m.fillRect(x - tw / 2, y - 12, tw, 16);
+    m.fillStyle = col; m.fillText(lab, x, y);
   }
 
-  return { init, resize, setOptions, loadAssets, draw, drawMinimap, drawBriefingMap, get ppm() { return ppm; }, get cam() { return cam; }, get opts() { return opts; }, sx, sy, get img() { return img; } };
+  return { init, resize, setOptions, loadAssets, draw, drawMinimap, drawBriefingMap, syncMap, get floor() { return curFloor; }, get ppm() { return ppm; }, get cam() { return cam; }, get opts() { return opts; }, sx, sy, get img() { return img; } };
 })();
