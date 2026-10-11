@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>忍彩かくれんぼ — 城旗争奪</title>
-  <meta name="description" content="擬態かくれんぼで城の旗を先に掴む3対3の忍者ゲーム。CryptoNinja非公式ファンゲーム。課金なし・通信なし・オフライン可。">
+  <meta name="description" content="擬態かくれんぼで城の旗を先に掴む3対3の忍者ゲーム。CryptoNinja非公式ファンゲーム。課金なし・オフライン可（オンライン対戦は合言葉の部屋）。">
   <meta name="theme-color" content="#15222B">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
@@ -12,16 +12,18 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="忍彩かくれんぼ">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
   <!-- タイトル -->
   <section id="screen-title" class="screen active">
     <div class="title-wrap">
+      <button class="bonus-btn" id="btn-bonus" data-go="bonus" aria-label="おつとめ帳">おつとめ帳<span class="hint" id="bonus-hint" hidden>受け取れます</span></button>
       <div class="title-castle" aria-hidden="true"></div>
       <p class="title-sub">見つからずに近づく。仲間が気を引く。その隙に、城の旗を掴め。</p>
       <h1 class="title-logo"><span>忍彩かくれんぼ</span><small>城旗争奪</small></h1>
+      <p class="title-badge" id="title-badge" hidden></p>
       <div class="title-chars" aria-hidden="true">
         <img src="img/chars/sakuya_quarter.png" alt="">
         <img src="img/chars/kohaku_front.png" alt="" class="mid">
@@ -64,7 +66,7 @@
       <h3>相手の強さ</h3>
       <div id="dif-cards" class="cards"></div>
       <button class="btn primary big" id="btn-start-match">作戦会議へ →</button>
-      <p class="mini">通信対戦は未実装。味方2人と相手3人は端末内のBot（人間と同じ可視情報・能力制限で動く）。</p>
+      <p class="mini">ひとり用の味方と相手は端末内のBot（人間と同じ可視情報・能力制限で動く）。友だちとは合言葉の部屋で遊べます。</p>
     </div>
   </section>
 
@@ -100,7 +102,7 @@
       <h2>作戦会議 <span class="timer"><b id="briefing-timer">15</b>秒</span></h2>
       <canvas id="briefing-map" width="384" height="288"></canvas>
       <p id="briefing-text"></p>
-      <div class="legend"><span class="n">北・竹回廊</span><span class="c">中央門</span><span class="s">南・石庭</span></div>
+      <div class="legend"><span class="n">一の道</span><span class="c">二の道</span><span class="s">三の道</span></div>
       <button class="btn primary big" id="btn-depart">出発（3秒後に開始）</button>
     </div>
   </section>
@@ -167,6 +169,7 @@
     <div class="page-body result">
       <h2 id="result-title" class="result-title">結果</h2>
       <p id="result-sub" class="result-sub"></p>
+      <p class="result-badge" id="result-badge" hidden></p>
       <div id="result-hero" class="result-hero"></div>
       <table id="result-table" class="result-table"></table>
       <div class="row">
@@ -194,7 +197,18 @@
       <div id="zukan-stats" class="stats"></div>
       <div id="zukan-filter" class="chips"></div>
       <div id="zukan-cards"></div>
-      <p class="mini">名前・クラン・忍術・武器・紹介文は <a href="https://www.ninja-dao.com/characters" target="_blank" rel="noopener">Ninja DAO 公式キャラクター資料</a>（CC0）から。資料シートは公式2D・公式3Dフィギュア・公式データをまとめた参照用。「ゲーム用アレンジ案」は公式画像を参照して描いた本作の解釈で、公式設定画ではない。</p>
+      <p class="mini">名前・クラン・忍術・武器・紹介文は <a href="https://www.ninja-dao.com/characters" target="_blank" rel="noopener">Ninja DAO 公式キャラクター資料</a>から。本作は <a href="https://www.ninja-dao.com/guidelines" target="_blank" rel="noopener">CryptoNinja 公式利用ガイドライン</a>に沿って作る非公式ファンゲームです。資料シートは公式2D・公式3Dフィギュア・公式データをまとめた参照用。「ゲーム用アレンジ案」は公式画像を参照して描いた本作の解釈で、公式設定画ではない。</p>
+    </div>
+  </section>
+
+  <!-- おつとめ帳（毎日の小判・交換所） -->
+  <section id="screen-bonus" class="screen page">
+    <header class="page-head"><button class="btn small" data-go="title">← 戻る</button><h2>おつとめ帳</h2><span class="koban-total" id="koban-total"></span></header>
+    <div class="page-body">
+      <div class="card" id="bonus-today"></div>
+      <div class="card" id="bonus-shop"><h3 id="shop-head"></h3><p class="mini" id="shop-lead"></p><div class="chips" id="shop-tabs"></div><div id="shop-list"></div></div>
+      <p class="mini" id="bonus-foot"></p>
+      <div class="card ad-card" id="bonus-ad" hidden></div>
     </div>
   </section>
 
@@ -210,12 +224,14 @@
       </div>
       <div class="card">
         <h3>お金・通信</h3>
-        <p>課金・広告・アイテム販売はありません。通信もしません（試合は端末内で完結し、戦績は端末内にだけ保存）。速度・擬態時間・索敵範囲に差をつける要素は今後も売りません。</p>
+        <p>課金・広告・アイテム販売はありません。おつとめ帳の小判と交換所の品は、この端末のこのブラウザの中だけの記録です。お金では手に入らず、ほかの人には見えず、強さも変わりません。</p>
+        <p>通信するのは「合言葉の部屋」を使うときだけです（試合の入力と状態をやりとりします）。ひとり用・練習・おつとめ帳は端末の中で完結し、戦績と小判は端末の中にだけ保存します。</p>
+        <p>速度・擬態時間・索敵範囲に差をつける要素は、今後も売りません。</p>
       </div>
       <div class="card">
         <h3>設計</h3>
-        <p>ルールは「忍彩かくれんぼ — 城旗争奪 ゲーム設計書 v1.0」（2026-09-22）に基づく単一端末向けの試作。三人称3Dは未実装で、競技の判定はサーバーへ移せる形（入力は方向と行動だけ、座標と命中は判定側が決める）で作ってあります。39体の能力値・固有技・HP・レベルアップは「39忍 キャラクター性能設計図 v1.1」「HP・レベルアップ機能 設計図 v1.2」に基づく本作の創作で、公式設定ではありません。</p>
-        <p class="mini">版 1.1 ／ ルール版 1.1（HP・成長） ／ マップ「竹影の城」1.0</p>
+        <p>ルールは「忍彩かくれんぼ — 城旗争奪 ゲーム設計書 v1.0」（2026-09-22）に基づく試作。ひとり用は端末内のBotと遊び、合言葉の部屋では判定を部屋サーバーが行います（入力は方向と行動だけ、座標と命中は判定側が決める）。三人称3Dは未実装です。試合ごとの城は本作の生成です。39体の能力値・固有技・HP・レベルアップは「39忍 キャラクター性能設計図 v1.1」「HP・レベルアップ機能 設計図 v1.2」に基づく本作の創作で、公式設定ではありません。</p>
+        <p class="mini">版 1.3 ／ ルール版 1.1（HP・成長） ／ 城ダンジョン 1.0 ／ 練習マップ「竹影の城」1.0</p>
       </div>
     </div>
   </section>
@@ -230,12 +246,17 @@
       <label class="row-set"><span>ボタンにキー名を表示（PC）</span><input type="checkbox" id="set-keys"></label>
       <label class="row-set"><span>画面の拡大率</span><input type="range" id="set-zoom" min="0.8" max="1.3" step="0.1"></label>
       <label class="row-set"><span>音量</span><input type="range" id="set-vol" min="0" max="1" step="0.1"></label>
+      <label class="row-set" id="set-hint-row"><span>タイトルに「受け取れます」を出す<small>その日のおつとめをまだ受け取っていないとき、おつとめ帳のボタンに小さく表示します。</small></span><input type="checkbox" id="set-hint"></label>
+      <div class="row-set" id="set-trio-row"><span>タイトルに並べる3人</span><span class="row-btns"><button class="btn small" id="btn-trio">選ぶ</button><button class="btn small" id="btn-trio-reset">元に戻す</button></span></div>
+      <label class="row-set" id="set-adoffers-row" hidden><span>広告のおさそいを表示する<small>おつとめ帳のいちばん下に、見るかどうかを選べる広告のおまけを出します。オフにしても、小判は毎日もらえます。広告や使う時間を確実に管理したいときは、端末の機能（iPhoneのスクリーンタイム、Androidのファミリーリンク）もお使いください。</small></span><input type="checkbox" id="set-adoffers"></label>
       <label class="row-set col"><span>オンラインのサーバーURL<small>空欄なら既定。自分で公開したWorkerのURLに変えられる</small></span><input id="set-server" inputmode="url" autocomplete="off" spellcheck="false"></label>
       <button class="btn primary big" id="btn-close-settings">閉じる</button>
-      <button class="btn small danger" id="btn-reset-save">戦績と設定を消す</button>
+      <button class="btn small danger" id="btn-reset-save">戦績・設定・小判を消す</button>
     </div>
   </div>
   <div id="sheet-modal" class="overlay"><img id="sheet-img" alt="キャラクターシート"></div>
+  <div id="trio-modal" class="overlay"><div class="panel wide"><h2 id="trio-head"></h2><div id="trio-grid" class="cgrid"></div><div class="row"><button class="btn primary" id="btn-trio-ok">決める</button><button class="btn" id="btn-trio-cancel">やめる</button></div></div></div>
+  <div id="gate-modal" class="overlay"><div class="panel"><h2 id="gate-head"></h2><p id="gate-lead"></p><p class="gate-q" id="gate-q"></p><p class="gate-in" id="gate-in" aria-live="polite"></p><div class="gate-pad" id="gate-pad"></div><p class="mini" id="gate-msg" aria-live="polite"></p><button class="btn" id="btn-gate-cancel"></button></div></div>
   <div id="picker-modal" class="overlay">
     <div class="panel wide">
       <h2>味方を指名</h2>
@@ -244,13 +265,15 @@
     </div>
   </div>
 
-  <script src="chars.js?v=6"></script>
-  <script src="balance.js?v=6"></script>
-  <script src="castle.js?v=6"></script>
-  <script src="data.js?v=6"></script>
-  <script src="sim.js?v=6"></script>
-  <script src="render.js?v=6"></script>
-  <script src="net.js?v=6"></script>
-  <script src="game.js?v=6"></script>
+  <script src="chars.js?v=7"></script>
+  <script src="balance.js?v=7"></script>
+  <script src="castle.js?v=7"></script>
+  <script src="data.js?v=7"></script>
+  <script src="sim.js?v=7"></script>
+  <script src="render.js?v=7"></script>
+  <script src="net.js?v=7"></script>
+  <script src="bonus.js?v=7"></script>
+  <script src="ads.js?v=7"></script>
+  <script src="game.js?v=7"></script>
 </body>
 </html>

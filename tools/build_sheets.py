@@ -80,7 +80,7 @@ td:first-child{width:96px;color:#8a6b2f;font-weight:700}
  </div>
 </div>
 <div class="rule"></div>
-<div class="foot">CryptoNinja ファンゲーム制作資料 ／ 出典：Ninja DAO 公式キャラクター資料（ninja-dao.com/characters・CC0）／ 本作は非公式</div>
+<div class="foot">CryptoNinja ファンゲーム制作資料 ／ 出典：Ninja DAO 公式キャラクター資料（ninja-dao.com/characters）／ CryptoNinja 公式利用ガイドラインに沿った非公式ファンゲーム</div>
 </div></body></html>"""
 
 

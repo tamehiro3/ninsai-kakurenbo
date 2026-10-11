@@ -4,10 +4,13 @@
   const $$ = s => Array.from(document.querySelectorAll(s));
   const D = DATA, R = DATA.RULES, S = Sim;
   const SAVE_KEY = "ninsaiKakurenboV1";
+  const CAT = Bonus.buildCatalog(D.CHARS);        // おつとめ帳の交換所の品（bonus.js）
+  let testNow = null;                                // 検証用の時刻（localhost のときだけ setNow で入る）
+  const nowMs = () => (testNow != null ? testNow : Date.now());
 
   // ---------- 保存 ----------
   const DEFAULT_SAVE = {
-    settings: { swapSides: false, zoom: 1, reduceMotion: false, footMarks: true, volume: 0.7, difficulty: "normal", charId: "kohaku", mates: [null, null], team: 0, role: "vanguard", showKeys: false },
+    settings: { swapSides: false, zoom: 1, reduceMotion: false, footMarks: true, volume: 0.7, difficulty: "normal", charId: "kohaku", mates: [null, null], team: 0, role: "vanguard", showKeys: false, adOffers: true, bonusHint: true },
     stats: { matches: 0, wins: 0, ties: 0, losses: 0, bestClaim: 0, hides: 0, reveals: 0, hits: 0, returns: 0, claims: 0, hp0: 0, heals: 0, skills: 0, tutorialDone: false },
     chars: {},
   };
@@ -21,6 +24,7 @@
     if (typeof save.settings.char === "number" && D.CHARS[save.settings.char]) { save.settings.charId = D.CHARS[save.settings.char].id; delete save.settings.char; }
     if (!D.CHARS.some(c => c.id === save.settings.charId)) save.settings.charId = "kohaku";
     if (!Array.isArray(save.settings.mates)) save.settings.mates = [null, null];
+    save.bonus = Bonus.normalize(save.bonus, CAT);     // おつとめ帳（v6 までの保存には無い＝空から）
   }
   // ---------- 城ダンジョン（castle.js） ----------
   const CASTLE_ROUTE = ["一の道", "二の道", "三の道"];
@@ -42,7 +46,29 @@
   }
   const CASTLE_DIF_NOTE = { easy: "3階（地下〜2F）・旗の階と部屋が分かる・4分", normal: "4〜5階・旗の階だけ分かる・5分", hard: "5〜6階（天守あり）・旗は候補3室・6分" };
   function charRec(id) { if (!save.chars[id]) save.chars[id] = { plays: 0, wins: 0 }; return save.chars[id]; }
-  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 保存できない端末でも遊べる */ } }
+  function readStored() { try { const raw = localStorage.getItem(SAVE_KEY); const cur = raw ? JSON.parse(raw) : null; return cur && typeof cur === "object" ? cur : null; } catch (e) { return null; } }
+  // 広告のおさそいの設定は、別のタブで後から変えた方を残す（止めたのに古いタブが書き戻さないように）
+  function mergeAdOffers(cur) {
+    const s = cur && cur.settings; if (!s || typeof s.adOffers !== "boolean") return false;
+    if ((+s.adOffersAt || 0) > (+save.settings.adOffersAt || 0)) { const was = save.settings.adOffers; save.settings.adOffers = s.adOffers; save.settings.adOffersAt = +s.adOffersAt; return was !== s.adOffers; }
+    return false;
+  }
+  function persist() {
+    const cur = readStored();                       // 読めない・壊れた保存は無視して上書きする
+    try {
+      if (cur && cur.bonus) save.bonus = Bonus.newer(save.bonus, Bonus.normalize(cur.bonus, CAT));
+      mergeAdOffers(cur);
+    } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); return true; }
+    catch (e) { return false; }                   // 保存できない端末でも遊べる
+  }
+  // おつとめ帳の記録だけを書き戻す（別のタブの戦績・設定は上書きしない）
+  function persistBonusOnly() {
+    const cur = readStored() || JSON.parse(JSON.stringify(save));
+    cur.bonus = save.bonus;
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(cur)); return true; } catch (e) { return false; }
+  }
+  function setAdOffers(on) { save.settings.adOffers = !!on; save.settings.adOffersAt = Date.now(); return persist(); }
   load();
 
   // ---------- 音（Web Audio 合成・素材なし） ----------
@@ -124,25 +150,30 @@
       ambient = { src, drumTimer };
     }
     function stopAmbient() { if (!ambient) return; try { ambient.src.stop(); } catch (e) { } clearInterval(ambient.drumTimer); ambient = null; }
-    return { unlock, play, vol, startAmbient, stopAmbient };
+    function mute() { if (!ac || !master) return; try { master.gain.value = 0; if (ac.state === "running") ac.suspend(); } catch (e) { } }
+    function unmute() { if (!ac || !master) return; try { if (ac.state === "suspended") ac.resume(); master.gain.value = save.settings.volume; } catch (e) { } }
+    return { unlock, play, vol, startAmbient, stopAmbient, mute, unmute };
   })();
 
   // ---------- 画面 ----------
   const screens = $$(".screen");
   let current = "title";
   function show(id) {
+    if (current === "bonus" && id !== "bonus") leaveBonus();
     screens.forEach(s => s.classList.toggle("active", s.id === "screen-" + id));
     current = id;
     document.body.dataset.screen = id;
     if (id !== "game") Snd.stopAmbient();
+    if (id === "title") { refreshBonusBadge(); applyCosmetics(); }
   }
   document.addEventListener("pointerdown", () => Snd.unlock(), { once: false });
-  $$("[data-go]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); const to = b.dataset.go; if (to === "lobby") buildLobby(); if (to === "zukan") buildZukan(); show(to); }));
+  $$("[data-go]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); const to = b.dataset.go; if (to === "lobby") buildLobby(); if (to === "zukan") buildZukan(); show(to); if (to === "bonus") buildBonus(); }));   // おつとめ帳は画面を切り替えてから組む（広告のカードが今の画面を見るため）
   $$("[data-open-settings]").forEach(b => b.addEventListener("click", () => { Snd.play("ui"); buildSettings(); $("#settings-panel").classList.add("on"); }));
 
   // ---------- 遊び方・利用表示 ----------
   function buildHowto() {
     $("#howto-body").innerHTML = D.HOWTO.map(h => `<div class="card"><h3>${h.h}</h3><p>${h.p}</p></div>`).join("") +
+      `<div class="card"><h3>${Bonus.HOWTO.h}</h3><p>${Bonus.HOWTO.p}</p>${Ads.CONFIG.provider !== "none" ? `<p>${Bonus.HOWTO_AD}</p>` : ""}</div>` +
       `<div class="card"><h3>操作</h3><table class="ctl"><tr><th>動作</th><th>スマホ</th><th>PC</th></tr>${D.CONTROLS.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table></div>`;
   }
   buildHowto();
@@ -251,6 +282,7 @@
     return players;
   }
   function startMatch(o) {
+    Ads.leakCheck("match");
     mode = "match"; tutorial = null;
     g = S.createMatch({ players: buildPlayers(o.swap), seed: (Date.now() % 1000000) | 1, difficulty: lobby.difficulty, castle: nextSoloCastle(lobby.difficulty) });
     S.bindMap(g);
@@ -259,7 +291,7 @@
     beginBriefing();
   }
   function beginBriefing() {
-    logIdx = 0; paused = false; resultTimer = 0;
+    logIdx = 0; paused = false; resultTimer = 0; toasts.length = 0; renderToasts();
     clearGameOverlays();          // 再戦でも系統選択の記録（treePickChosen）を持ち越さない
     show("briefing");
     const mc = $("#briefing-map");
@@ -774,6 +806,7 @@
     const sc = D.CHARS[speaker.char];
     $("#result-hero").innerHTML = `<img src="img/chars/${sc.id}_${sc.painted ? (win || tie ? "happy" : "surprised") : "front"}.png" alt=""><div class="bubble"><b>${sc.name}</b><br>${line}</div>`;
     $("#result-sub").textContent = timeout ? `${(g.duration || R.duration) + R.overtime}秒、どちらも旗を掴めなかった` : `${claimers.map(p => (p === me ? "あなた" : p.name) + "（" + D.TEAMS[p.team].name + "）").join("・")}が ${g.elapsed.toFixed(1)}秒 で旗を掴んだ${g.overtime ? "（延長）" : ""}`;
+    { const t = save.bonus.equip.title, rb = $("#result-badge"); if (rb) { rb.hidden = !t; rb.textContent = t ? Bonus.textFill("titleBadge", { name: (CAT.byId.get(t) || {}).name || "" }) : ""; } }
     const rows = g.players.filter(p => p.team === me.team).map(p => { const r = D.ROLES.find(x => x.id === p.role), s = p.stats || {}; return `<tr><td>${p === me ? "あなた" : p.name}<small>${r ? r.name : ""}</small></td><td>${n0(s.hides)}</td><td>${n0(s.reveals)}</td><td>${n0(s.hits)}</td><td>${Math.round(n0(s.damage))}</td><td>${n0(s.hp0)}</td><td>${n0(s.heals)}</td><td>${n0(s.skills)}</td><td>${n0(s.pings)}</td></tr>`; });
     const lvA = (g.level && g.level[me.team]) || 1, lvB = (g.level && g.level[1 - me.team]) || 1;
     $("#result-table").innerHTML = `<tr><td colspan="9" class="result-level">最終レベル：${D.TEAMS[me.team].shape} ${D.TEAMS[me.team].name} Lv.${lvA}（${D.TEAMS[1 - me.team].shape} ${D.TEAMS[1 - me.team].name} Lv.${lvB}）</td></tr><tr><th>味方</th><th>擬態</th><th>見破り</th><th>命中</th><th>与ダメ</th><th>被露見</th><th>手当</th><th>固有技</th><th>合図</th></tr>${rows.join("")}`;
@@ -787,7 +820,7 @@
   let zukanClan = "all";
   function buildZukan() {
     const st = save.stats;
-    $("#zukan-stats").innerHTML = `<div class="stat"><b>${st.matches}</b>試合</div><div class="stat"><b>${st.wins}</b>優勝</div><div class="stat"><b>${st.ties}</b>同着/引分</div><div class="stat"><b>${st.claims}</b>旗を掴んだ</div><div class="stat"><b>${st.bestClaim ? st.bestClaim.toFixed(1) + "秒" : "—"}</b>最速</div><div class="stat"><b>${st.hides}</b>擬態</div><div class="stat"><b>${st.reveals}</b>見破り</div><div class="stat"><b>${st.hits}</b>命中</div>`;
+    $("#zukan-stats").innerHTML = `<div class="stat"><b>${st.matches}</b>試合</div><div class="stat"><b>${st.wins}</b>優勝</div><div class="stat"><b>${st.ties}</b>同着/引分</div><div class="stat"><b>${st.claims}</b>旗を掴んだ</div><div class="stat"><b>${st.bestClaim ? st.bestClaim.toFixed(1) + "秒" : "—"}</b>最速</div><div class="stat"><b>${st.hides}</b>擬態</div><div class="stat"><b>${st.reveals}</b>見破り</div><div class="stat"><b>${st.hits}</b>命中</div><div class="stat"><b>${CAT.items.filter(it => it.kind === "seal" && save.bonus.owned.includes(it.id)).length}/39</b>朱印</div>`;
     const clans = ["all", ...new Set(D.CHARS.map(c => c.clan))];
     $("#zukan-filter").innerHTML = clans.map(k => `<button class="chip ${k === zukanClan ? "sel" : ""}" data-clan="${k}">${k === "all" ? "全員" : k}</button>`).join("");
     $$("#zukan-filter .chip").forEach(b => b.addEventListener("click", () => { zukanClan = b.dataset.clan; buildZukan(); }));
@@ -798,7 +831,7 @@
       const lines = c.lines.win;
       const sk = c.skill;
       return `<div class="zcard"><div class="zimg"><img src="img/art/${c.id}.jpg" alt="${c.name}"><img class="zsprite" src="img/chars/${c.id}_front.png" alt=""></div>
-        <div class="zbody"><h3>${c.name} <small>#${c.num} ${c.en}</small></h3>
+        <div class="zbody"><h3>${c.name}${save.bonus.owned.includes("seal_" + c.id) ? '<span class="seal-mark" aria-label="朱印">朱</span>' : ""} <small>#${c.num} ${c.en}</small></h3>
         ${c.title ? `<div class="cp-title">${c.title}<em>${c.roleLabel || ""}</em><span class="cp-tree">推奨系統：${treeLabel(c.tree)}</span></div>` : ""}
         <dl><dt>公式資料</dt><dd>${c.clan}${c.clanEn ? "（" + c.clanEn + "）" : ""}・${c.jutsu}・${c.weapon}・誕生日 ${c.birthday}</dd>
         <dt>紹介</dt><dd>${c.bio || c.bioEn || "公式資料に紹介文なし"}</dd>
@@ -824,6 +857,8 @@
     const s = save.settings;
     $("#set-swap").checked = s.swapSides; $("#set-foot").checked = s.footMarks; $("#set-motion").checked = s.reduceMotion; $("#set-keys").checked = s.showKeys;
     $("#set-zoom").value = s.zoom; $("#set-vol").value = s.volume;
+    $("#set-hint").checked = s.bonusHint !== false; $("#set-adoffers").checked = !!s.adOffers;
+    $("#set-adoffers-row").hidden = Ads.CONFIG.provider === "none";   // 段階2だけ表示
     let su = ""; try { su = localStorage.getItem("ninsaiServerUrl") || ""; } catch (e) { }
     $("#set-server").value = su; $("#set-server").placeholder = D.ONLINE.url;
     applySettings();
@@ -835,6 +870,8 @@
     document.body.classList.toggle("show-keys", s.showKeys);
     Render.setOptions({ footMarks: s.footMarks, reduceMotion: s.reduceMotion, zoom: s.zoom });
     Snd.vol(s.volume);
+    document.body.classList.toggle("reduce-motion", !!s.reduceMotion);
+    Ads.setSound(s.volume > 0);
   }
   $("#set-swap").addEventListener("change", e => { save.settings.swapSides = e.target.checked; persist(); applySettings(); });
   $("#set-foot").addEventListener("change", e => { save.settings.footMarks = e.target.checked; persist(); applySettings(); });
@@ -842,13 +879,22 @@
   $("#set-keys").addEventListener("change", e => { save.settings.showKeys = e.target.checked; persist(); applySettings(); });
   $("#set-zoom").addEventListener("input", e => { save.settings.zoom = +e.target.value; persist(); applySettings(); });
   $("#set-vol").addEventListener("input", e => { save.settings.volume = +e.target.value; persist(); applySettings(); });
-  $("#btn-reset-save").addEventListener("click", () => { if (confirm("戦績と設定を消して最初からにしますか？")) { localStorage.removeItem(SAVE_KEY); load(); buildSettings(); alert("消しました"); } });
+  $("#btn-reset-save").addEventListener("click", () => {
+    if (!confirm(Bonus.TEXT.resetConfirm)) return;
+    const ep = Math.max(Date.now(), ((save.bonus && save.bonus.epoch) || 0) + 1);
+    save = JSON.parse(JSON.stringify(DEFAULT_SAVE)); save.bonus = Bonus.empty(ep);
+    let ok = false;                                  // 古い記録と合成せずに直接書く（新旧の判定で古い小判が残らないように）
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); ok = true; } catch (e) { try { localStorage.removeItem(SAVE_KEY); ok = true; } catch (e2) { } }
+    load(); buildSettings(); applyCosmetics(); refreshBonusBadge();
+    alert(ok ? "消しました" : "この端末では記録を書きかえられませんでした。ブラウザの設定で、このサイトのデータを消してください。");
+  });
   $("#btn-close-settings").addEventListener("click", () => $("#settings-panel").classList.remove("on"));
   applySettings();
 
   // ---------- 練習（90秒の導入） ----------
   function startTutorial() {
-    mode = "tutorial";
+    Ads.leakCheck("tutorial");
+    mode = "tutorial"; toasts.length = 0; renderToasts();
     g = S.createMatch({
       practice: true, noTimer: true, briefing: false, difficulty: "easy",
       players: [
@@ -1083,6 +1129,7 @@
 
   // 試合開始（サーバーから）
   function startOnlineMatch(m) {
+    Ads.leakCheck("room");
     mode = "online"; tutorial = null; online.lobby = m.lobby || online.lobby; online.endMsg = null; online.byId = new Map(); online.lastLogTick = -1; online.lastEff = 0;
     const map = S.mapFor(m.castle ? { castle: m.castle, difficulty: m.castle.difficulty } : null);
     const dur = map.kind === "castle" ? map.castle.duration : R.duration;
@@ -1219,12 +1266,365 @@
     else { toast("ホスト（👑）が次を決めます。少し待って", "info"); if (kind === "tolobby") { endOnlineMatch(); show("room"); buildRoom(); } }
   }
 
+  // ---------- おつとめ帳（毎日の小判）・交換所・広告のおまけ（設計図 docs/login-bonus-blueprint.md） ----------
+  // 判定と計算は bonus.js（純粋な関数）、広告の受け渡しは ads.js。ここは画面と保存だけ。
+  // 段階1：ads.js の provider は "none"＝広告の画面は出さず、Google との通信もしない。
+  const BT = Bonus.TEXT, tf = (k, v) => Bonus.textFill(k, v || {});
+  const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  const KIND_LABEL = { title: "称号", bg: "タイトルの背景", frame: "名札", bubble: "吹き出し", seal: "朱印帳" };
+  const TRACK = Bonus.LOGIN_TRACK || [10, 10, 10, 10, 10, 10, 30];
+  const ACTIVE_STATES = new Set(["checking", "ready", "showing", "viewed", "big", "extra", "dismissed", "error", "unavailable", "stopped"]);
+  let bonusView = { justClaimed: null, saveOk: true };
+  let adView = { state: "", tried: false };
+  let bonusTimer = 0, shopTab = "title", swapArm = null, swapTimer = 0;
+  const escHtml = s => String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch]));
+
+  function readStoredBonus() {
+    try { const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const cur = JSON.parse(raw); return cur && cur.bonus ? Bonus.normalize(cur.bonus, CAT) : null; } catch (e) { return null; }
+  }
+  // 操作の直前に保存を読み直し、新しい方（epoch→rev）を手元に置く（別のタブで受け取った分を二重にしない）
+  function syncBonus() { try { const s = readStoredBonus(); if (s) save.bonus = Bonus.newer(save.bonus, s); } catch (e) { } }
+  const bonusStatus = () => Bonus.status(save.bonus, nowMs(), CAT);
+  function itemName(id) { const it = CAT.byId.get(id); return it ? it.name : ""; }
+
+  // 着せ替え：タイトルの背景・名札・吹き出し（CSS）／称号の行／タイトルに並ぶ3人
+  const TRIO_DEFAULT = [["sakuya", "sakuya_quarter.png"], ["kohaku", "kohaku_front.png"], ["jin", "jin_quarter.png"]];
+  function applyCosmetics() {
+    const eq = (save.bonus && save.bonus.equip) || {};
+    for (const k of ["bg", "frame", "bubble"]) { if (eq[k]) document.body.dataset[k] = eq[k]; else delete document.body.dataset[k]; }
+    const tb = $("#title-badge");
+    if (tb) { const n = eq.title ? itemName(eq.title) : ""; tb.hidden = !n; tb.textContent = n ? tf("titleBadge", { name: n }) : ""; }
+    const imgs = $$(".title-chars img");
+    imgs.forEach((im, i) => {
+      const id = Array.isArray(eq.trio) ? eq.trio[i] : null;
+      im.src = "img/chars/" + (id ? id + "_front.png" : TRIO_DEFAULT[i][1]);
+    });
+  }
+  // タイトルの「受け取れます」（朱色の点は使わない・設定で消せる）
+  function refreshBonusBadge() {
+    const btn = $("#btn-bonus"), hint = $("#bonus-hint"); if (!btn || !hint) return;
+    let can = false; try { can = bonusStatus().canClaim; } catch (e) { }
+    const on = can && save.settings.bonusHint !== false;
+    hint.hidden = !on;
+    btn.setAttribute("aria-label", on ? BT.titleBtnAria : BT.titleBtn);
+  }
+
+  // ---- おつとめ帳の画面 ----
+  function buildBonus() {
+    bonusView = { justClaimed: null, saveOk: bonusView.saveOk };
+    adView = { state: "", tried: false };
+    swapArm = null;
+    $("#shop-head").textContent = BT.shopHead; $("#shop-lead").textContent = BT.shopLead; $("#bonus-foot").textContent = BT.bonusFoot;
+    renderBonus();
+    clearInterval(bonusTimer);
+    let lastDay = bonusStatus().today;
+    // 開いている間は60秒ごとに日付を見直す（午前4時を過ぎたら描き直す・残り時間も更新）
+    bonusTimer = setInterval(() => { if (current !== "bonus") return; const t = bonusStatus().today; if (t !== lastDay) { lastDay = t; bonusView.justClaimed = null; } renderBonus(); }, 60000);
+  }
+  function renderBonus() {
+    const st = bonusStatus();
+    $("#koban-total").textContent = "小判 " + st.koban;
+    renderToday(st); renderShop(st); renderAdCard();
+  }
+  function nextTimeText(st) {
+    const h = Math.max(1, Math.min(24, Math.ceil((st.nextBoundaryMs - nowMs()) / 3600000)));
+    return tf("nextTime", { h });
+  }
+  function renderToday(st) {
+    const j = bonusView.justClaimed && bonusView.justClaimed.day === st.today && st.claimedToday ? bonusView.justClaimed : null;   // 日付が変わったら「受け取りました」は出さない
+    const slots = TRACK.map((n, k) => {
+      const done = k < st.doneInCycle, next = st.canClaim && k === st.nextSlot;
+      const just = j && k === ((st.doneInCycle - 1 + 7) % 7) && st.claimedToday;
+      return `<div class="slot7 ${done ? "done" : ""} ${next ? "next" : ""} ${just ? "just" : ""}"><span>${escHtml(tf("slotLabel", { k: k + 1 }))}</span><b>${n}</b></div>`;
+    }).join("");
+    let body = "";
+    if (j) body = `<p class="bonus-msg good">${escHtml(tf("claimed", { n: j.amount }))}${j.first ? escHtml(BT.claimedFirst) : ""}</p><p class="mini">${escHtml(nextTimeText(st))}</p>`;
+    else if (st.clock === "ahead" || st.reason === "ahead") body = `<p class="bonus-msg">${escHtml(tf("ahead", { date: st.aheadLabelJa, resume: st.resumeLabelJa }))}</p>`;
+    else if (st.canClaim) body = `<p>${escHtml(BT.todayLead)}</p>${st.firstPending ? `<p class="mini">${escHtml(BT.firstNote)}</p>` : ""}<button class="btn primary big" id="btn-claim-bonus">${escHtml(tf("claimBtn", { n: st.nextAmount }))}</button>`;
+    else body = `<p class="bonus-msg">${escHtml(BT.alreadyToday)}</p><p class="mini">${escHtml(nextTimeText(st))}</p>`;
+    if (bonusView.saveOk === false) body += `<p class="bonus-msg warn">${escHtml(BT.saveFail)}</p>`;
+    $("#bonus-today").innerHTML = `<h3>${escHtml(BT.todayHead)}</h3><div class="slots">${slots}</div>${body}<p class="mini days-total">${escHtml(tf("daysTotal", { d: st.days }))}</p>`;
+    const b = $("#btn-claim-bonus"); if (b) b.addEventListener("click", doClaim);
+  }
+  function doClaim() {
+    syncBonus();
+    const r = Bonus.claim(save.bonus, nowMs(), CAT);
+    if (r.reason !== "ok") { renderBonus(); return; }
+    save.bonus = r.state; bonusView.saveOk = persist(); bonusView.justClaimed = Object.assign({ day: bonusStatus().today }, r.granted);
+    try { Snd.play("found"); } catch (e) { }
+    refreshBonusBadge(); renderBonus();             // 広告の準備はここでは始めない
+  }
+
+  // ---- 交換所・朱印帳 ----
+  function swatchHtml(it) {
+    if (it.kind === "title") return `<span class="swatch t">称</span>`;
+    if (it.kind === "bg") return `<span class="swatch bg" data-bg-preview="${escHtml(it.id)}"></span>`;
+    if (it.kind === "frame") return `<span class="swatch fr" data-frame-preview="${escHtml(it.id)}"></span>`;
+    if (it.kind === "bubble") return `<span class="swatch bb" data-bubble-preview="${escHtml(it.id)}">…</span>`;
+    return "";
+  }
+  function itemButton(it, st) {
+    const owned = save.bonus.owned.includes(it.id);
+    if (owned) {
+      const slot = it.kind === "seal" ? null : it.kind;
+      if (!slot) return `<span class="owned-tag">交換ずみ</span>`;
+      const on = save.bonus.equip[slot] === it.id;
+      return `<button class="btn small ${on ? "on" : ""}" data-equip="${escHtml(slot)}" data-item="${escHtml(it.id)}">${escHtml(on ? BT.equipped : BT.equipBtn)}</button>`;
+    }
+    if (st.koban < it.price) return `<button class="btn small" disabled>${escHtml(tf("short", { x: it.price - st.koban }))}</button>`;
+    const armed = swapArm && swapArm.id === it.id;
+    return `<button class="btn small ${armed ? "confirm" : ""}" data-swap="${escHtml(it.id)}">${escHtml(armed ? BT.swapConfirm : tf("swapBtn", { p: it.price }))}</button>`;
+  }
+  function renderShop(st) {
+    const kinds = Bonus.KINDS || ["title", "bg", "frame", "bubble", "seal"];
+    $("#shop-tabs").innerHTML = kinds.map(k => `<button class="chip ${k === shopTab ? "sel" : ""}" data-shop-tab="${k}">${escHtml(KIND_LABEL[k] || k)}</button>`).join("");
+    const items = CAT.items.filter(it => it.kind === shopTab);
+    let html = "";
+    if (shopTab === "seal") {
+      const n = items.filter(it => save.bonus.owned.includes(it.id)).length;
+      html = `<p class="mini">${escHtml(tf("sealCount", { n }))}</p><div class="seal-grid">` + items.map(it => {
+        const cid = it.id.replace(/^seal_/, ""), c = D.CHARS.find(x => x.id === cid) || { id: cid, name: it.name };
+        const owned = save.bonus.owned.includes(it.id);
+        return `<div class="seal-cell ${owned ? "own" : ""}"><img src="img/faces/${escHtml(c.id)}.png" alt=""><span>${escHtml(c.name)}</span>${itemButton(it, st)}</div>`;
+      }).join("") + `</div>`;
+    } else {
+      html = items.map(it => `<div class="shop-item">${swatchHtml(it)}<div class="si-name"><b>${escHtml(it.name)}</b><small>${it.price}小判</small></div>${itemButton(it, st)}</div>`).join("");
+    }
+    $("#shop-list").innerHTML = (bonusView.swapMsg ? `<p class="bonus-msg good" role="status">${escHtml(bonusView.swapMsg)}</p>` : "") + html;
+  }
+  document.addEventListener("click", e => {
+    if (current !== "bonus") return;
+    const tab = e.target.closest("[data-shop-tab]");
+    if (tab) { Snd.play("ui"); shopTab = tab.dataset.shopTab; swapArm = null; bonusView.swapMsg = ""; renderShop(bonusStatus()); return; }
+    const sw = e.target.closest("[data-swap]");
+    if (sw) {
+      const id = sw.dataset.swap;
+      // 2回押しで交換（子どもの押し間違いを防ぐ・3秒で元に戻す）
+      if (swapArm && swapArm.id === id && nowMs() <= swapArm.until) { swapArm = null; clearTimeout(swapTimer); doExchange(id); return; }
+      swapArm = { id, until: nowMs() + 3000 }; bonusView.swapMsg = ""; Snd.play("ui");
+      clearTimeout(swapTimer); swapTimer = setTimeout(() => { swapArm = null; if (current === "bonus") renderShop(bonusStatus()); }, 3000);
+      renderShop(bonusStatus()); return;
+    }
+    const eqb = e.target.closest("[data-equip]");
+    if (eqb) { const slot = eqb.dataset.equip, id = eqb.dataset.item; doEquip(slot, save.bonus.equip[slot] === id ? null : id); }
+  });
+  function doExchange(id) {
+    syncBonus();
+    const r = Bonus.exchange(save.bonus, id, CAT, nowMs());
+    if (r.reason !== "ok") { renderBonus(); return; }
+    save.bonus = r.state; bonusView.saveOk = persist();
+    try { Snd.play("pick"); } catch (e) { }
+    bonusView.swapMsg = tf("swapped", { name: itemName(id) });   // 試合の画面のお知らせ欄には出さない
+    renderBonus();
+  }
+  function doEquip(slot, value) {
+    syncBonus();
+    const r = Bonus.equip(save.bonus, slot, value, CAT);
+    if (r.reason !== "ok") { renderBonus(); return false; }
+    save.bonus = r.state; bonusView.saveOk = persist();
+    try { Snd.play("ui"); } catch (e) { }
+    applyCosmetics(); if (current === "bonus") renderBonus();
+    return true;
+  }
+
+  // ---- 広告のおまけ（段階2だけ表示。段階1は provider "none" でカードごと出さない） ----
+  function adCtx() {
+    const st = bonusStatus();
+    return { provider: Ads.CONFIG.provider, settingOn: !!save.settings.adOffers, screen: current, inMatch: !!g, inRoom: !!(typeof Net !== "undefined" && Net.connected && Net.connected()),
+      adClockOk: st.ad.clockOk, claimedToday: st.claimedToday, adDoneToday: st.ad.doneToday, declinedToday: st.ad.declinedToday,
+      online: navigator.onLine !== false, apiOk: Ads.available() };
+  }
+  function gateToState(reason) {
+    return ({ clock: "clock", not_claimed: "before_claim", done_today: "done", declined_today: "declined", offline: "offline", no_api: "unavailable" })[reason] || "hidden";
+  }
+  function renderAdCard() {                          // 通信しない。カードの段を決めて描くだけ
+    const today = bonusStatus().today;               // 日付が変わったら前の日の結果を片付ける（広告の準備中・表示中は触らない）
+    if (adView.day !== today && !["checking", "ready", "showing"].includes(adView.state) && !Ads.isBusy()) adView = { state: "", tried: false, day: today };
+    if (!ACTIVE_STATES.has(adView.state)) {          // 準備中・表示中・結果の表示中はそのまま
+      const gte = Bonus.adGate(adCtx());
+      adView.state = gte.ok ? "idle" : gateToState(gte.reason);
+    }
+    drawAdCard();
+  }
+  function stampsHtml(st) {
+    const s = st.ad.stamps;
+    const dots = Array.from({ length: 7 }, (_, i) => `<i class="stamp ${i < s ? "on" : ""} ${adView.granted && !adView.granted.big && !adView.granted.extra && i === s - 1 ? "just" : ""}"></i>`).join("");
+    return `<div class="stamp-card"><p class="mini">${escHtml(tf("stampHead", { s }))}</p><div class="stamps">${dots}</div><p class="mini">${escHtml(BT.stampNote)}</p>${st.ad.cards > 0 ? `<p class="mini">${escHtml(tf("stampCards", { c: st.ad.cards }))}</p>` : ""}<p class="mini">${escHtml(BT.allItems)}</p></div>`;
+  }
+  function drawAdCard() {
+    const card = $("#bonus-ad"); if (!card) return;
+    const s = adView.state;
+    if (!s || s === "hidden") { card.hidden = true; card.innerHTML = ""; return; }
+    card.hidden = false;
+    const st = bonusStatus();
+    const msg = t => `<p>${escHtml(t)}</p>`;
+    let html = `<h3>${escHtml(BT.adHead)}</h3>`;
+    const amt = st.ad.amount;
+    if (s === "before_claim") html += msg(BT.adBeforeClaim);
+    else if (s === "clock") html += msg(tf("adClock", { date: st.ad.resumeLabelJa }));
+    else if (s === "done") html += msg(BT.adDoneToday) + stampsHtml(st);
+    else if (s === "declined") html += msg(BT.adDeclined);
+    else if (s === "offline" || s === "unavailable") html += msg(BT.adUnavailable);
+    else if (s === "idle") html += msg(tf("adIntro", { n: amt })) + `<div class="ad-choice"><button class="btn" id="btn-ad-choose">${escHtml(BT.adChoose)}</button><button class="btn" id="btn-ad-skip">${escHtml(BT.adSkip)}</button></div><button class="link-btn" id="btn-ad-stop">${escHtml(BT.adStop)}</button>` + stampsHtml(st);
+    else if (s === "checking") html += msg(BT.adChecking) + `<div class="ad-choice one"><button class="btn" id="btn-ad-cancel">${escHtml(BT.adCancel)}</button></div>`;
+    else if (s === "ready") html += msg(tf("adOffer", { n: amt })) + `<div class="ad-choice wait" id="ad-choice"><button class="btn" id="btn-ad-watch">${escHtml(BT.adWatch)}</button><button class="btn" id="btn-ad-cancel">${escHtml(BT.adCancel)}</button></div><button class="link-btn" id="btn-ad-stop">${escHtml(BT.adStop)}</button>` + stampsHtml(st);
+    else if (s === "showing") html += msg(BT.adChecking);
+    else if (s === "viewed" || s === "big") { const gr = adView.granted || {}; html += msg(tf("adViewed", { n: gr.amount != null ? gr.amount : amt, s: gr.stamps != null ? gr.stamps : st.ad.stamps })) + (s === "big" ? msg(BT.adBig) : "") + stampsHtml(st); }
+    else if (s === "extra") { const gr = adView.granted || {}; html += msg(tf("adExtra", { n: gr.amount != null ? gr.amount : amt })) + stampsHtml(st); }
+    else if (s === "dismissed") html += msg(BT.adDismissed);
+    else if (s === "error") html += msg(BT.adError);
+    else if (s === "stopped") html += msg(BT.adStopped);
+    card.innerHTML = html;
+    const on = (id, fn) => { const el = card.querySelector(id); if (el) el.addEventListener("click", fn); };
+    on("#btn-ad-choose", () => { Snd.play("ui"); requestAd(); });
+    on("#btn-ad-skip", () => { Snd.play("ui"); declineToday(); });
+    on("#btn-ad-cancel", () => { Snd.play("ui"); declineToday(); });
+    on("#btn-ad-stop", () => { Snd.play("ui"); stopOffers(); });
+    on("#btn-ad-watch", watchAd);
+    if (s === "ready") {                             // 出てから600ミリ秒は押しても反応しない（押し間違いを防ぐ）
+      const left = Math.max(0, 600 - (performance.now() - (adView.readyAt || 0)));
+      setTimeout(() => { const c = $("#ad-choice"); if (c) c.classList.remove("wait"); }, left);
+    }
+  }
+  function requestAd() {                             // 「広告のおまけを選ぶ」。広告の準備を始めるのはこの関数の中の1か所だけ
+    if (adView.tried) return;
+    syncBonus();
+    const gate = Bonus.adGate(adCtx());
+    if (!gate.ok) { adView.state = gateToState(gate.reason); drawAdCard(); return; }
+    adView.tried = true; adView.state = "checking"; drawAdCard();
+    const started = Ads.prepare({
+      onReady: show => { adView.state = "ready"; adView.show = show; adView.readyAt = performance.now(); drawAdCard(); },
+      onResult: (kind, detail) => onAdResult(kind, detail),
+      beforeAd: () => Snd.mute(), afterAd: () => Snd.unmute(),
+    });
+    if (!started) { adView.state = "unavailable"; drawAdCard(); }
+  }
+  function watchAd() {                               // 「広告を見る」
+    if (adView.state !== "ready" || !adView.show) return;
+    if (performance.now() - (adView.readyAt || 0) < 600) return;   // 押し間違いを防ぐ
+    syncBonus();
+    const gate = Bonus.adGate(adCtx());                             // 押した瞬間に確かめ直す
+    if (!gate.ok) { Ads.cancel(); adView.show = null; adView.state = gateToState(gate.reason); drawAdCard(); return; }
+    const f = adView.show; adView.show = null; adView.state = "showing"; drawAdCard(); f();
+  }
+  function declineToday() {                          // 「見ない」「やめる」
+    Ads.cancel(); syncBonus(); save.bonus = Bonus.declineAd(save.bonus, nowMs()); bonusView.saveOk = persist();
+    adView.show = null; adView.state = "declined"; drawAdCard();
+  }
+  function stopOffers() {                            // 「このおさそいを出さない」
+    Ads.cancel(); bonusView.saveOk = setAdOffers(false);
+    adView.show = null; adView.state = "stopped"; drawAdCard();
+  }
+  function onAdResult(kind, detail) {                // 広告の報酬を記録するのは、この関数の viewed の分岐の1か所だけ
+    let granted = null;
+    syncBonus();                                     // 1. 読み直し（中で try/catch）
+    if (kind === "viewed") {                         // 2. 報酬の記録を最優先（小判0の経路は無い）
+      const r = Bonus.recordAdView(save.bonus, nowMs());
+      save.bonus = r.state; bonusView.saveOk = persist(); granted = r.granted;
+      adView.granted = granted; adView.state = r.reason === "extra" ? "extra" : (granted.big ? "big" : "viewed");
+    } else if (kind === "dismissed") {
+      save.bonus = Bonus.declineAd(save.bonus, nowMs()); bonusView.saveOk = persist(); adView.state = "dismissed";
+    } else {
+      adView.state = kind === "error" ? "error" : "unavailable";
+    }
+    adView.show = null;
+    try { Snd.unmute(); if (granted) Snd.play(granted.big ? "levelup" : "found"); } catch (e) { }   // 3. 音と描画は後
+    try { refreshBonusBadge(); if (current === "bonus") renderBonus(); } catch (e) { }
+  }
+  function leaveBonus() {
+    if (!Ads.inAd()) Ads.cancel();                   // 広告が画面に出ている間だけは触らない。ほかは必ず使用中を解く
+    adView = { state: "", tried: false }; bonusView.justClaimed = null; clearInterval(bonusTimer); clearTimeout(swapTimer); swapArm = null;
+  }
+
+  // ---- 設定：タイトルの3人（無料）・大人の確認（広告のおさそいを戻すとき） ----
+  let trioPick = [];
+  function openTrio() {
+    const eq = save.bonus.equip.trio;
+    trioPick = Array.isArray(eq) ? eq.slice() : [];
+    drawTrio();
+    $("#trio-modal").classList.add("on");
+  }
+  function drawTrio() {
+    $("#trio-head").textContent = tf("trioHead", { k: trioPick.length });
+    $("#trio-grid").innerHTML = D.CHARS.map(c => { const i = trioPick.indexOf(c.id); return `<button class="cgrid-btn ${i >= 0 ? "sel" : ""}" data-trio="${escHtml(c.id)}"><img src="img/faces/${escHtml(c.id)}.png" alt=""><span>${escHtml(c.name)}</span><small>${i >= 0 ? (i + 1) + "人目" : "#" + escHtml(c.num)}</small></button>`; }).join("");
+    $("#btn-trio-ok").disabled = trioPick.length !== 3;
+  }
+  $("#trio-grid").addEventListener("click", e => {
+    const b = e.target.closest("[data-trio]"); if (!b) return;
+    const id = b.dataset.trio, i = trioPick.indexOf(id);
+    if (i >= 0) trioPick.splice(i, 1); else if (trioPick.length < 3) trioPick.push(id);
+    Snd.play("ui"); drawTrio();
+  });
+  $("#btn-trio-ok").addEventListener("click", () => { if (trioPick.length === 3 && doEquip("trio", trioPick.slice())) $("#trio-modal").classList.remove("on"); });
+  $("#btn-trio-cancel").addEventListener("click", () => $("#trio-modal").classList.remove("on"));
+  $("#btn-trio").addEventListener("click", () => { Snd.play("ui"); openTrio(); });
+  $("#btn-trio-reset").addEventListener("click", () => { Snd.play("ui"); doEquip("trio", null); });
+
+  let gateQ = null, gateDigits = "", gateLockUntil = 0, gateOnOk = null, gateTick = 0;
+  function newGateQuestion() { gateQ = Bonus.gateQuestion(Math.floor(Math.random() * 1e9)); gateDigits = ""; }
+  function openGate(onOk) {
+    gateOnOk = onOk; newGateQuestion();
+    $("#gate-head").textContent = BT.gateHead; $("#gate-lead").textContent = BT.gateLead; $("#btn-gate-cancel").textContent = BT.gateCancel;
+    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "ok"];
+    $("#gate-pad").innerHTML = keys.map(k => `<button class="btn" data-gate="${k}">${k === "del" ? escHtml(BT.gateDel) : k === "ok" ? escHtml(BT.gateOk) : k}</button>`).join("");
+    drawGate(); $("#gate-modal").classList.add("on");
+    clearInterval(gateTick); gateTick = setInterval(drawGate, 1000);
+  }
+  function closeGate() { $("#gate-modal").classList.remove("on"); clearInterval(gateTick); gateOnOk = null; }
+  function drawGate() {
+    const wait = Math.ceil((gateLockUntil - Date.now()) / 1000);
+    $("#gate-q").textContent = tf("gateQ", { a: gateQ.a, b: gateQ.b });
+    $("#gate-in").textContent = gateDigits || "　";
+    $("#gate-msg").textContent = wait > 0 ? tf("gateWait", { s: wait }) : "";
+    if (wait <= 0 && gateLockUntil) { gateLockUntil = 0; newGateQuestion(); $("#gate-q").textContent = tf("gateQ", { a: gateQ.a, b: gateQ.b }); $("#gate-in").textContent = "　"; }
+  }
+  $("#gate-pad").addEventListener("click", e => {
+    const b = e.target.closest("[data-gate]"); if (!b) return;
+    const k = b.dataset.gate;
+    if (k === "del") gateDigits = gateDigits.slice(0, -1);
+    else if (k === "ok") {
+      if (Date.now() < gateLockUntil) { drawGate(); return; }
+      if (Bonus.gateCheck(gateQ, gateDigits)) { const f = gateOnOk; closeGate(); if (f) f(); return; }
+      gateLockUntil = Date.now() + (Bonus.GATE_LOCK_MS || 60000); gateDigits = "";
+      $("#gate-msg").textContent = BT.gateWrong; return;
+    } else if (gateDigits.length < 3) gateDigits += k;
+    Snd.play("ui"); drawGate();
+  });
+  $("#btn-gate-cancel").addEventListener("click", () => { closeGate(); buildSettings(); });
+
+  $("#set-hint").addEventListener("change", e => { save.settings.bonusHint = e.target.checked; persist(); refreshBonusBadge(); });
+  $("#set-adoffers").addEventListener("change", e => {
+    if (!e.target.checked) { setAdOffers(false); return; }
+    e.target.checked = false;                        // オンに戻すときは大人の確認を通す
+    openGate(() => { setAdOffers(true); buildSettings(); if (current === "bonus") { adView = { state: "", tried: false }; renderBonus(); } });
+  });
+
+  // 別のタブで記録が変わった（受け取り・広告・保存を消した）
+  window.addEventListener("storage", e => {
+    if (e.key !== SAVE_KEY && e.key !== null) return;
+    const stored = readStoredBonus();
+    syncBonus();
+    if (!stored || Bonus.newer(stored, save.bonus) !== stored) persistBonusOnly();   // 保存側に無い・古い → おつとめ帳の記録だけすぐ書き戻す
+    if (mergeAdOffers(readStored()) && !save.settings.adOffers && !Ads.inAd()) { Ads.cancel(); adView.show = null; if (ACTIVE_STATES.has(adView.state)) adView.state = ""; }
+    if (adView.state === "checking" || adView.state === "ready") {
+      const gte = Bonus.adGate(adCtx());
+      if (!gte.ok) { Ads.cancel(); adView.show = null; adView.state = gateToState(gte.reason); }
+    }
+    applyCosmetics(); refreshBonusBadge(); if (current === "bonus") renderBonus();
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshBonusBadge(); if (current === "bonus") renderBonus(); } });
+  setInterval(() => { if (current === "title") refreshBonusBadge(); }, 60000);
+  // 検証用：時刻を差し替える（localhost のときだけ効く）
+  function setNow(ms) { if (!IS_LOCAL) return false; testNow = ms == null ? null : +ms; refreshBonusBadge(); if (current === "bonus") renderBonus(); return true; }
+
   // 検証用の窓口（機械検査・自動テスト用。ゲーム内では使わない）
   window.__ninsai = { get g() { return g; }, get me() { return me; }, get tutorial() { return tutorial; }, get mode() { return mode; }, get online() { return online; }, queue, input, show, startMatch, startTutorial, onlineCreate, onlineJoin, save: () => save,
-    updateHUD, consumeLog, showResult, buildLobby, buildZukan, applyInput, applySnapshot, startOnlineMatch, onlineEnd, chooseTree, get hud() { return hud; } };
+    updateHUD, consumeLog, showResult, buildLobby, buildZukan, applyInput, applySnapshot, startOnlineMatch, onlineEnd, chooseTree, get hud() { return hud; },
+    bonus: { status: () => Bonus.status(save.bonus, nowMs(), CAT), claim: doClaim, setNow, state: () => save.bonus, ads: Ads, render: () => { if (current === "bonus") renderBonus(); } } };
 
   // ---------- 起動 ----------
   Render.loadAssets().then(() => { document.body.classList.add("ready"); });
+  applyCosmetics(); refreshBonusBadge();
   // ローカル確認中はService Workerを使わない（古いファイルが残らないように）
   if ("serviceWorker" in navigator && !["localhost", "127.0.0.1"].includes(location.hostname)) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => { })); }
   show("title");

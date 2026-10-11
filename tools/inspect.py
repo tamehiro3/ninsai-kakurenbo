@@ -15,13 +15,15 @@
   8. 部屋サーバー（worker/src の構文・sim_bundle.js が ESM として読める・最新の同梱か）
   9. 城ダンジョン（castle.js：設計図の受け入れ条件10項目・再現性・左右対称・城型の巡回＝tools/castletest.js／
      公開物に検証用ページや設計図が混ざらない）
+ 10. おつとめ帳（bonus.js／ads.js：tools/bonustest.js・tools/adstest.js・純粋さ・カタログ・試合との切り離し・
+     背中を押す語・広告の段階（段階1は Google への通信なし）・広告の呼び出し場所・保護者の確認まわり）
 """
 import os, re, sys, json, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 OK, NG, WARN = "OK", "NG", "注意"
-MIN_VER = 6            # 2026-09-25：castle.js（城ダンジョン）を足したときに v6 へ。これ未満なら古いキャッシュが残る
+MIN_VER = 7            # 2026-10-10：bonus.js／ads.js（おつとめ帳）を足したときに v7 へ。これ未満なら古いキャッシュが残る
 STAT_KEYS = ["spd", "camo", "atk", "def", "scout", "esc"]
 TREES = ["影", "技", "護"]
 results = []
@@ -81,22 +83,22 @@ def check_refs():
     add("index.html の参照ファイル", NG if missing else OK, "不足: " + ", ".join(missing) if missing else f"{len(refs)}件すべて実在")
     # balance.js は data.js が読み込み時に参照する（BALANCE）ので chars.js の後・data.js の前に読む
     scripts = re.findall(r'<script src="([^"?]+)(?:\?v=\d+)?"', html)
-    need = ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js")
+    need = ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "net.js", "bonus.js", "ads.js", "game.js")
     order_ok = all(s in scripts for s in need) and [scripts.index(s) for s in need] == sorted(scripts.index(s) for s in need)
-    add("index.html の読み込み順（chars → balance → castle → data → sim → render）", OK if order_ok else NG, " → ".join(scripts) if scripts else "script タグなし")
+    add("index.html の読み込み順（chars → balance → castle → data → sim → render → net → bonus → ads → game）", OK if order_ok else NG, " → ".join(scripts) if scripts else "script タグなし")
     sw = rd("sw.js")
     core = re.findall(r'"\./([^"?]+)(?:\?v=\d+)?"', sw)
     miss_sw = [c for c in core if c and not os.path.exists(os.path.join(ROOT, c))]
     add("sw.js の CORE 直書き分", NG if miss_sw else OK, "不足: " + ", ".join(miss_sw) if miss_sw else f"{len(core)}件すべて実在")
-    core_need = [f for f in ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "net.js", "game.js", "style.css", "index.html") if f not in core]
-    add("sw.js の CORE に主要ファイル（balance.js・castle.js 含む）", NG if core_need else OK, "CORE に無い: " + ", ".join(core_need) if core_need else "chars/balance/castle/data/sim/render/net/game/style/index が揃っている")
+    core_need = [f for f in ("chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "net.js", "bonus.js", "ads.js", "game.js", "style.css", "index.html") if f not in core]
+    add("sw.js の CORE に主要ファイル（balance.js・castle.js 含む）", NG if core_need else OK, "CORE に無い: " + ", ".join(core_need) if core_need else "chars/balance/castle/data/sim/render/net/bonus/ads/game/style/index が揃っている")
     ids = re.search(r'const ALL = \[(.*?)\];', sw)
     n_ids = len(re.findall(r'"([a-z]+)"', ids.group(1))) if ids else 0
     add("sw.js の39体リスト", OK if n_ids == 39 else NG, f"{n_ids}体")
 
 
 def check_safety():
-    files = ["index.html", "data.js", "balance.js", "castle.js", "game.js", "render.js", "sim.js", "chars.js"]
+    files = ["index.html", "data.js", "balance.js", "castle.js", "game.js", "render.js", "sim.js", "chars.js", "bonus.js", "ads.js"]
     text = "\n".join(rd(f) for f in files)
     forbidden = ["ガチャ", "課金", "決済", "購入する", "クレジットカード", "パスワード", "Stripe", "paypal", "adsbygoogle", "<input type=\"text\"", "<textarea", "contenteditable"]
     hits = []
@@ -113,7 +115,7 @@ def check_safety():
     other = [u for u in urls if "ninja-dao.com" not in u and "workers.dev" not in u]
     add("外部リンク", NG if other else OK, "ninja-dao.com / workers.dev 以外: " + ", ".join(other) if other else f"ninja-dao.com と部屋サーバー（workers.dev）のみ（{len(urls)}件）")
     add("非公式表示", OK if "非公式ファンゲーム" in rd("index.html") else NG, "タイトル画面と利用表示に記載" if "非公式ファンゲーム" in rd("index.html") else "見当たらない")
-    fetches = re.findall(r"\bfetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon", "\n".join(rd(f) for f in ["game.js", "render.js", "sim.js", "data.js", "balance.js", "castle.js"]))
+    fetches = re.findall(r"\bfetch\(|XMLHttpRequest|WebSocket|navigator\.sendBeacon", "\n".join(rd(f) for f in ["game.js", "render.js", "sim.js", "data.js", "balance.js", "castle.js", "bonus.js", "ads.js"]))
     add("外部通信コード", NG if fetches else OK, f"{len(fetches)}件" if fetches else "game/render/sim/data/balance に fetch/XHR/WebSocket なし（通信は net.js＝合言葉の部屋サーバーだけ）")
     net = rd("net.js")
     urls_net = set(re.findall(r'https?://[^\s"\'<>)]+', net))
@@ -146,7 +148,7 @@ CRITERIA = [
 
 
 def check_js():
-    files = ["chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "game.js"]
+    files = ["chars.js", "balance.js", "castle.js", "data.js", "sim.js", "render.js", "net.js", "bonus.js", "ads.js", "game.js"]
     js = "const fs=require('fs');for(const f of process.argv.slice(2)){new Function(fs.readFileSync(process.argv[1]+'/'+f,'utf8'));}console.log('ok')"
     r = node(["-e", js, ROOT] + files)
     add("JS構文（node）", OK if r.stdout.strip() == "ok" else NG, r.stderr.strip()[:200] if r.returncode else f"{len(files)}ファイル読み込み可（{'・'.join(files)}）")
@@ -262,11 +264,140 @@ def check_castle():
         last + ("｜" + " / ".join(l for l in lines if l.startswith(("やさしい", "ふつう", "てごわい"))) if r.returncode == 0 else "｜" + " / ".join(l for l in lines if l.startswith("NG"))[:300]))
     # 公開物に検証用ページ・ユーザー提供の設計図が混ざらない（.gitignore で除外されているか）
     gi = rd(".gitignore")
-    leak = [f for f in ("docs/castle-dungeon-blueprint.txt", "docs/character-balance-blueprint.txt", "docs/hp-level-blueprint.txt") if f not in gi]
-    add("設計図を公開しない（.gitignore）", NG if leak else OK, "除外されていない: " + ", ".join(leak) if leak else "城・39体・HPの設計図3枚を除外ずみ")
+    leak = [f for f in ("docs/castle-dungeon-blueprint.txt", "docs/character-balance-blueprint.txt", "docs/hp-level-blueprint.txt", "docs/login-bonus-blueprint.md", "tools/bonus_drive.html", "docs/ads-stage2-checklist.md") if f not in gi]
+    add("設計図を公開しない（.gitignore）", NG if leak else OK, "除外されていない: " + ", ".join(leak) if leak else "城・39体・HP・おつとめ帳の設計図と、広告の検証ページ・段階2のチェックリストを除外ずみ")
     # 検証用ページは端末の保存を消さない（公開されても遊ぶ人の記録を壊さない）
-    bad = [f for f in ("tools/castle_view.html", "tools/game_drive.html") if os.path.exists(os.path.join(ROOT, f)) and ("removeItem" in rd(f) or "localStorage.clear" in rd(f))]
-    add("検証用ページが保存を消さない", NG if bad else OK, ", ".join(bad) if bad else "castle_view / game_drive は localStorage を消さない")
+    bad = [f for f in ("tools/castle_view.html", "tools/game_drive.html", "tools/bonus_drive.html") if os.path.exists(os.path.join(ROOT, f)) and ("removeItem" in rd(f) or "localStorage.clear" in rd(f))]
+    add("検証用ページが保存を消さない", NG if bad else OK, ", ".join(bad) if bad else "castle_view / game_drive / bonus_drive は localStorage を消さない")
+
+def _func_body(src, name):
+    """game.js から `function name(` の本体（次の同じ深さの function まで）を取り出す"""
+    m = re.search(r"\n(\s*)function " + re.escape(name) + r"\(", src)
+    if not m:
+        return ""
+    ind = m.group(1)
+    rest = src[m.end():]
+    n = re.search(r"\n" + re.escape(ind) + r"(?:function |const |let |\$\(|document\.|window\.|// )", rest)
+    return rest[: n.start()] if n else rest
+
+
+def check_bonus():
+    # 1・2 自動テスト
+    for f, label in (("tools/bonustest.js", "bonustest（日付・おつとめ・時計・広告スタンプ・交換所・正規化・カタログ・保護者の確認）"), ("tools/adstest.js", "adstest（広告の受け渡し・偽の広告で）")):
+        r = node([os.path.join(ROOT, f)])
+        last = [l for l in r.stdout.splitlines() if l.strip()]
+        add("おつとめ帳：" + label, OK if r.returncode == 0 else NG, (last[-1] if last else (r.stderr.strip()[:200] or "出力なし")))
+    # 3 bonus.js は純粋な関数だけ
+    b = rd("bonus.js")
+    bad = [w for w in ("Math.random", "Date.now", "localStorage", "document.", "window.") if w in b] + (["new Date()"] if re.search(r"new Date\(\s*\)", b) else [])
+    add("おつとめ帳：bonus.js は純粋な関数だけ", NG if bad else OK, "使っている: " + ", ".join(bad) if bad else "乱数・現在時刻・保存・画面に触れない（時刻と種は引数で受け取る）")
+    # 4 カタログ
+    js = r"""
+const B=require(process.argv[1]+'/bonus.js'), D=require(process.argv[1]+'/data.js');
+const c=B.buildCatalog(D.CHARS), K=B.KINDS||["title","bg","frame","bubble","seal"], bad=[];
+const ids=new Set();
+for (const it of c.items){ if(!K.includes(it.kind)) bad.push('kind:'+it.id); if(!Number.isInteger(it.price)||it.price<1||it.price>500) bad.push('price:'+it.id); if(!/^[a-z0-9_]+$/.test(it.id)) bad.push('id:'+it.id); if(ids.has(it.id)) bad.push('dup:'+it.id); ids.add(it.id); if(!it.name) bad.push('name:'+it.id); }
+const seals=c.items.filter(i=>i.kind==='seal').length;
+if(seals!==39) bad.push('seal='+seals); if(c.items.length!==58) bad.push('items='+c.items.length);
+console.log(JSON.stringify({bad, n:c.items.length, seals, total:c.items.reduce((s,i)=>s+i.price,0)}));
+"""
+    r = node(["-e", js, ROOT])
+    try:
+        res = json.loads(r.stdout.strip().splitlines()[-1])
+        add("おつとめ帳：交換所のカタログ（5種類・値段1〜500・ID一意・朱印39・計58品）", NG if res["bad"] else OK, ("問題: " + ", ".join(res["bad"][:6])) if res["bad"] else f'{res["n"]}品（朱印{res["seals"]}）・合計{res["total"]}小判')
+    except Exception as e:
+        add("おつとめ帳：交換所のカタログ", NG, (r.stderr.strip() or str(e))[:200])
+    # 5 試合・部屋サーバーと切り離されている
+    iso = []
+    for f in ["sim.js", "render.js", "net.js", "data.js"] + ["worker/src/" + x for x in sorted(os.listdir(os.path.join(ROOT, "worker", "src"))) if x.endswith(".js")]:
+        t = rd(f)
+        if re.search(r"(?<![\w$])(Bonus|Ads)\.", t) or re.search(r"小判|koban|cosmetic", t):
+            iso.append(f)
+    add("おつとめ帳：試合・部屋サーバーと切り離し（強さに関係しない）", NG if iso else OK, "触れている: " + ", ".join(iso) if iso else "sim/render/net/data/worker に Bonus・Ads・小判の参照なし")
+    # 6 背中を押す語を使わない
+    ng = json.load(open(os.path.join(ROOT, "tools", "bonus_ngwords.json"), encoding="utf-8"))
+    js = r"""const B=require(process.argv[1]+'/bonus.js'); console.log(JSON.stringify([Object.values(B.TEXT).join('\n'), B.HOWTO.h+B.HOWTO.p, B.HOWTO_AD].join('\n')));"""
+    r = node(["-e", js, ROOT])
+    text = ""
+    try:
+        text = json.loads(r.stdout.strip().splitlines()[-1])
+    except Exception:
+        pass
+    html = rd("index.html")
+    m = re.search(r'<section id="screen-bonus".*?</section>', html, re.S)
+    text += "\n" + (m.group(0) if m else "")
+    hit = [w for w in ng if w in text]
+    add("おつとめ帳：急かす・あおる語を使わない（tools/bonus_ngwords.json）", NG if hit or not text.strip() else OK, "見つかった: " + ", ".join(hit) if hit else f"{len(ng)}語どれも無し")
+    # 7 広告の段階
+    a = rd("ads.js")
+    pm = re.search(r'provider:\s*"([^"]*)"', a)
+    prov = pm.group(1) if pm else ""
+    pub = "\n".join(rd(f) for f in sorted(os.listdir(ROOT)) if f.endswith(".js")) + rd("index.html")
+    if prov == "none":
+        words = [w for w in ("googlesyndication", "adsbygoogle", "data-adbreak-test") if w in pub]
+        add("おつとめ帳：広告の段階", NG if words else OK, ("段階1なのに公開物に: " + ", ".join(words)) if words else "段階1：広告は無効（Google への通信なし・広告の画面は出ない）")
+    elif prov == "h5":
+        cl = os.path.join(ROOT, "docs", "ads-stage2-checklist.md")
+        todo = []
+        if not os.path.exists(cl):
+            todo.append("docs/ads-stage2-checklist.md が無い")
+        else:
+            todo += [l.strip() for l in open(cl, encoding="utf-8") if l.strip().startswith("- [ ]")]
+        if not re.search(r'client:\s*"ca-pub-\d{16}"', a):
+            todo.append("client が ca-pub-16けたでない")
+        if re.search(r"testMode:\s*true", a):
+            todo.append("testMode が true")
+        add("おつとめ帳：広告の段階（段階2）", NG if todo else OK, " / ".join(todo[:5]) if todo else "段階2：チェックリスト全部済み・client 設定・testMode false")
+    else:
+        add("おつとめ帳：広告の段階", NG, f'ads.js の provider が "none"／"h5" 以外: {prov!r}')
+    # 8 広告の呼び出し場所（受け取りで広告の準備を始めない・報酬は viewed の1か所だけ）
+    g = rd("game.js")
+    req, claim, onres = _func_body(g, "requestAd"), _func_body(g, "doClaim"), _func_body(g, "onAdResult")
+    probs = []
+    if g.count("Ads.prepare(") != 1 or "Ads.prepare(" not in req:
+        probs.append("Ads.prepare は requestAd の中の1か所だけ")
+    elif req.find("Bonus.adGate(") < 0 or req.find("Bonus.adGate(") > req.find("Ads.prepare("):
+        probs.append("requestAd で Ads.prepare の前に Bonus.adGate が無い")
+    if "Ads." in claim:
+        probs.append("doClaim の中に Ads.（受け取りで広告の準備を始めている）")
+    if g.count("recordAdView(") != 1 or "recordAdView(" not in onres:
+        probs.append("recordAdView は onAdResult の中の1か所だけ")
+    else:
+        vi = onres.find('kind === "viewed"')
+        if vi < 0 or onres.find("recordAdView(") < vi:
+            probs.append('recordAdView が kind === "viewed" の分岐に無い')
+    add("おつとめ帳：広告の呼び出し場所", NG if probs else OK, " / ".join(probs) if probs else "準備は requestAd だけ（adGate の後）・doClaim は広告に触れない・報酬は onAdResult の viewed だけ")
+    # 9 偽の広告は手元だけ・testMode false
+    p9 = []
+    um = re.search(r"useFake[\s\S]{0,400}", a)
+    if not um or "isLocal" not in um.group(0):
+        p9.append("useFake に isLocal の条件が無い")
+    if not re.search(r"testMode:\s*false", a):
+        p9.append("testMode が false でない")
+    add("おつとめ帳：偽の広告は手元だけ・testMode false", NG if p9 else OK, " / ".join(p9) if p9 else "useFake は localhost のときだけ・公開版の testMode は false")
+    # 10 段階1では広告の行とカードが隠れている
+    p10 = []
+    if prov == "none":
+        for el in ("set-adoffers-row", "bonus-ad"):
+            mm = re.search(r'<[^>]*id="' + el + r'"[^>]*>', html)
+            if not mm or "hidden" not in mm.group(0):
+                p10.append("#" + el + " に hidden が無い")
+    # hidden 属性は .row-set { display:flex } などに負ける＝全体で必ず隠す指定が要る（2026-10-10 のレビューで設定の行が見えていた）
+    if not re.search(r"(?m)^\s*\[hidden\]\s*\{\s*display:\s*none\s*!important", rd("style.css")):
+        p10.append("style.css に [hidden] { display: none !important; } が無い（hidden を付けても見えてしまう）")
+    add("おつとめ帳：段階1は広告の行とカードを隠す", NG if p10 else OK,  " / ".join(p10) if p10 else ("#set-adoffers-row・#bonus-ad は hidden・style.css が hidden を必ず隠す" if prov == "none" else "段階2（表示は JS が決める）"))
+    # 11 広告の検証ページは公開しない・手元だけで動く
+    gi = rd(".gitignore")
+    p11 = []
+    if "tools/bonus_drive.html" not in gi:
+        p11.append(".gitignore に無い")
+    if os.path.exists(os.path.join(ROOT, "tools", "bonus_drive.html")) and "location.hostname" not in rd("tools/bonus_drive.html"):
+        p11.append("手元（location.hostname）の確認が無い")
+    add("おつとめ帳：広告の検証ページは公開しない", NG if p11 else OK, " / ".join(p11) if p11 else "tools/bonus_drive.html は .gitignore・手元のアドレスでだけ動く")
+    # 12 音の部品が無い端末でも、見終えた報酬が消えない
+    mu, un = _func_body(g, "mute"), _func_body(g, "unmute")
+    ok12 = "!ac || !master" in mu and "!ac || !master" in un
+    add("おつとめ帳：音の部品が無くても報酬が消えない", OK if ok12 else NG, "mute／unmute に !ac || !master の確認あり" if ok12 else "mute／unmute に null の確認が無い")
 
 
 def main():
@@ -279,6 +410,7 @@ def main():
     check_balance()
     check_worker()
     check_castle()
+    check_bonus()
     ng = [r for r in results if r["判定"] == NG]
     if "--json" in sys.argv:
         print(json.dumps({"results": results, "ng": len(ng)}, ensure_ascii=False, indent=1))

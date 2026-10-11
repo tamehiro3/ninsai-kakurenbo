@@ -2,7 +2,7 @@
 
 「見つからずに近づく。仲間が気を引く。その隙に、城の旗を掴め。」
 擬態かくれんぼで城の旗を先に掴む **3対3の忍者ゲーム**（CryptoNinja非公式ファンゲーム）。
-素のHTML/CSS/JS・外部ライブラリなし・通信なし・課金なし・オフライン可のPWA。
+素のHTML/CSS/JS・外部ライブラリなし・課金なし・オフライン可のPWA（通信は合言葉の部屋だけ）。
 
 設計の正本は Codex 出力の設計書 `game-blueprint.md`（2026-09-22・`C:\Users\3mori\Documents\Codex\2026-09-22\https-vibe-co-jp-luna-occulta-3\outputs\`）。
 本作はその **単一端末向けの試作** で、設計書との差分は下の「設計書からの変更点」に書く。
@@ -51,6 +51,15 @@
 - **検査**：`node tools/castletest.js 40`（受け入れ条件10項目・再現性・左右対称・階数と部屋数の範囲・候補3室・ルート数・城型の巡回・エンジンに載せて30秒）／`node tools/simtest.js 40 hard`（城でBot同士・`--legacy` で固定マップ）／`node tools/roomtest.mjs`（開始の知らせの spec から同じ城・再戦で城型が続かない・再接続）
 - **見た目の確認（課金なし・Edgeヘッドレス）**：`python tools/castle_shot.py --seed x --dif hard --type karakuri --at push --out shot.png`（`tools/castle_view.html`＝城を生成してBotで進め、視点・ミニマップ・作戦地図を描く。`--at fog|mech|push|lock|key|emblem|stair|trap|shrine` で見たい物のそばへ）／`tools/game_drive.html`（本物の画面を iframe で開いてひとり用の城の試合を進める）／`tools/online_drive.html`（部屋サーバーの本物のコードをページ内で動かし、ゲームの WebSocket だけ差し替えてオンラインの画面側を確かめる。wrangler dev が使えないときの代わり）。いずれも preview（port 8668）経由で開く検証用ページで、保存は消さない
 
+## おつとめ帳（毎日の小判・交換所・2026-10-10）
+設計図 `docs/login-bonus-blueprint.md`（非公開・`.gitignore`）。3つの点検（広告の規約と法令／ダークパターンと子ども／技術と公平さ）を通した v2 の**段階1**を実装した。
+- **おつとめ帳**：タイトル右上のボタン。日本時間の**午前4時**で日付が変わり、1日1回「小判」を受け取る。7マスを順にめぐり 1〜6回目は10、7回目は30、初回だけ+20。連続日数は数えず、休んでもゲームは何も減らさない（iPhone の Safari は端末が記録を消すことがあるので、そう書いている）
+- **交換所**：小判を見た目の品（称号7・タイトルの背景5・名札4・吹き出し3・朱印39＝計58品・2,020小判）と交換する。**どれも見た目だけで試合の強さは変わらず、ほかの人にも見えず、送信もしない**。くじ・確率・期間限定はない。交換は2回押し（3秒で戻る）。タイトルに並ぶ3人は設定から無料で選べる
+- **広告のおまけ（段階2・いまは無効）**：おつとめを受け取ったあと、おつとめ帳のいちばん下で本人が選んだときだけ、Google の報酬つき広告（H5 ゲーム広告の reward 型）を1本見て +5小判とスタンプ1つ（7つで +70小判）。「7日間連続」は「スタンプ7つ・1日1つ・期限なし・ゲームは減らさない」として受け止めた（毎日続ければ最短7日）。**段階1では `ads.js` の provider が `"none"`＝広告の画面は出さず、Google との通信もしない**。段階2に進むには、オーナーの AdSense・H5 ゲーム広告の承認、自動広告のオフ、限定広告、電気通信事業法の確認、プライバシーポリシーと外部送信の公表が要る（設計図 §9。`docs/ads-stage2-checklist.md` が全部済むまで inspect が止める）
+- **作り**：判定と計算は `bonus.js`（純粋な関数だけ・時刻は引数）、広告の受け渡しは `ads.js`（副作用はここだけ）、画面は `game.js`。記録は localStorage の同じキー `ninsaiKakurenboV1` の `bonus` に入る（`epoch`→`rev` で別のタブと新旧を比べる）。`sim.js`・`render.js`・`net.js`・`data.js`・`worker/` は変えていない＝部屋サーバーの再公開は要らない
+- **検査**：`node tools/bonustest.js`（日付・おつとめ・時計・広告スタンプ・交換所・正規化・カタログ・保護者の確認）／`node tools/adstest.js`（広告の受け渡しを偽の広告で）／`python tools/inspect.py` の「おつとめ帳」12項目（純粋さ・カタログ・切り離し・急かす語 `tools/bonus_ngwords.json`・広告の段階・呼び出し場所 ほか）
+- **手元の確認**：`http://localhost:8668/tools/bonus_drive.html?fake=viewed`（偽の広告で段階2の流れまで試せる・公開しない・手元のアドレスでだけ動く）。時刻は `__ninsai.bonus.setNow(ms)`（localhost のときだけ効く）
+
 ## HP・露見・手当
 - 印が当たると相手のHPが減る（基本34。攻撃の能力値1段ごとに±12%、防御1段ごとに∓8%）。HPは100、チームレベルで最大120。被弾後0.6秒は無敵、3秒は輪郭が見える。HPが30未満だと擬態できない
 - HPが0になると12秒の**正体露見**：移動70%（逃走の能力値で増減）・合図だけ可・擬態/攻撃/旗取得は不可・敵から常時見える。試合から消えることはない
@@ -84,6 +93,8 @@
 | `balance.js` | 39体の性能（能力値6軸・固有技・推奨系統・勝ち筋/逃げ方）と HP・系統（影/技/護 Lv2〜5）・経験値行動・合格基準の正本。設計図2枚から起こしたもの・手直しはここで |
 | `docs/character-balance-blueprint.txt` | 設計図①：39体の能力値と固有技（v1.1） |
 | `docs/hp-level-blueprint.txt` | 設計図②：HP・露見・手当・チーム経験値・レベル・系統・合格線（v1.2） |
+| `bonus.js` | おつとめ帳の判定と計算（日付・受け取り・時計・広告スタンプ・交換所のカタログと交換・新旧判定・保護者の確認の問題）。純粋な関数だけ |
+| `ads.js` | 広告の受け渡し（段階1は provider `"none"`＝何も読み込まない） |
 | `castle.js` | 城ダンジョンの生成器（seed→地下〜5階・城型5種・難易度3段階・受け入れ条件10項目の検査と作り直し）。ブラウザ・node・部屋サーバーで同じ seed なら同じ城 |
 | `docs/castle-dungeon-blueprint.txt` | 設計図③：城の複雑性（階・城型・難易度・生成8手順・受け入れ条件10項目）。公開しない |
 | `sim.js` | 競技シミュレーション。30Hz固定tick・決定論・DOM非依存。入力は「方向と行動」だけで、座標・命中・旗取得・HP・経験値・固有技はここが決める（サーバーへ移せる形）。Botの思考もここ |
@@ -96,6 +107,7 @@
 | `tools/build_prompts.py` | 手描き風シート用の生成プロンプト36体分（`docs/image-prompts_39.txt`） |
 | `net.js` | オンライン対戦の通信（WebSocket・入力送信20Hz・自動再接続） |
 | `worker/` | 合言葉の部屋サーバー（`src/index.js` 入口・`src/room.js` 部屋＝Durable Object・`src/sim_bundle.js` 自動同梱） |
+| `tools/bonustest.js` / `tools/adstest.js` / `tools/bonus_ngwords.json` | おつとめ帳と広告の受け渡しの検査・急かす語の一覧 |
 | `tools/castletest.js` | 城の生成の検査（受け入れ条件10項目・再現性・左右対称・階数/部屋数・城型の巡回） |
 | `tools/castle_shot.py` / `tools/castle_view.html` / `tools/game_drive.html` / `tools/online_drive.html` | 城の見た目・本物の画面・オンラインの画面側をEdgeヘッドレスで撮って確かめる検証用（公開物ではない） |
 | `tools/build_worker.py` | chars → balance → data → castle → sim の順で1本にまとめてサーバーへ同梱（`build()` を `inspect.py` が呼んで同梱物の鮮度を確認） |
@@ -129,7 +141,7 @@
 - ロビーは39体のグリッドから選ぶ。味方2人は「おまかせ」（毎回変わる）か指名。相手3人はランダム（同じキャラが両チームにいてもよい）
 
 ## 権利
-CryptoNinja（CC0・Ninja DAO）のキャラクター名・外見を参照した個人試作。会話・役割・道具は本作の創作。公式・非公式を問わずCryptoNinja/CNP運営とは無関係。商用化・本格公開時は公式利用ガイドラインの確認必須。キャラクターシート画像は公式画像を参照して生成したゲーム用アレンジ案であり公式設定画ではない。
+CryptoNinja（Ninja DAO）のキャラクター名・外見を、公式利用ガイドライン（https://www.ninja-dao.com/guidelines）に沿って参照した非公式ファンゲーム（個人試作）。会話・役割・道具は本作の創作。公式・非公式を問わずCryptoNinja/CNP運営とは無関係。商用化・本格公開時は公式利用ガイドラインの確認必須。キャラクターシート画像は公式画像を参照して生成したゲーム用アレンジ案であり公式設定画ではない。
 
 ## ローカル確認 / 公開
 - preview launch設定 `ninsai-kakurenbo`（port 8668）。ローカルではService Workerを登録しない（古いファイルが残らないように）
